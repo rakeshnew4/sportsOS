@@ -1,0 +1,23 @@
+# Secrets / credentials
+firebase_serviceaccount.json
+*serviceaccount*.json
+.env
+.env.*
+!.env.example
+
+# Local dummy-data store (JSON-backed fake Firestore)
+local_data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
