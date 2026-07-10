@@ -7,6 +7,7 @@ class CourtCreateRequest(BaseModel):
     hourly_price: float
     open_time: str  # "06:00"
     close_time: str  # "23:00"
+    dynamic_pricing_enabled: bool = False
 
 
 class CourtUpdateRequest(BaseModel):
@@ -26,3 +27,4 @@ class CourtResponse(BaseModel):
     open_time: str
     close_time: str
     is_active: bool
+    dynamic_pricing_enabled: bool = False

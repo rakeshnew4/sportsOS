@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 
@@ -18,7 +18,12 @@ def get_wallet(db: Client, uid: str) -> WalletResponse:
     doc = wallet_doc_ref(db, uid).get()
     if not doc.exists:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wallet not found")
-    return WalletResponse(uid=uid, balance=doc.to_dict()["balance"])
+    data = doc.to_dict()
+    return WalletResponse(
+        uid=uid,
+        balance=data["balance"],
+        currency=data.get("currency", "INR")
+    )
 
 
 def list_transactions(db: Client, uid: str) -> list[WalletTransactionResponse]:
@@ -31,7 +36,9 @@ def _apply_ledger_entry(transaction, wallet_ref, tx_ref, amount: float, tx_type:
     snapshot = wallet_ref.get(transaction=transaction)
     if not snapshot.exists:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wallet not found")
-    balance = snapshot.to_dict()["balance"]
+    data = snapshot.to_dict()
+    balance = data["balance"]
+    currency = data.get("currency", "INR")
     if tx_type == "debit" and balance < amount:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient wallet balance")
     new_balance = balance - amount if tx_type == "debit" else balance + amount
@@ -41,10 +48,11 @@ def _apply_ledger_entry(transaction, wallet_ref, tx_ref, amount: float, tx_type:
         {
             "type": tx_type,
             "amount": amount,
+            "currency": currency,
             "reason": reason,
             "related_booking_id": related_booking_id,
             "balance_after": new_balance,
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         },
     )
     return new_balance

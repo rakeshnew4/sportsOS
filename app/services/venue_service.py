@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 
@@ -15,7 +15,7 @@ def create_venue(db: Client, uid: str, req: VenueCreateRequest) -> VenueResponse
             "city": req.city,
             "geo": req.geo.model_dump(),
             "sports": req.sports,
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
     )
     grant_owner_role(db, uid, tenant_ref.id)

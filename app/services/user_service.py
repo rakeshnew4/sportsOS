@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 
@@ -14,7 +14,7 @@ def register_player(db: Client, uid: str, req: PlayerRegisterRequest) -> None:
         {
             "display_name": req.display_name,
             "phone": req.phone,
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
     )
     player_ref.collection("wallet").document("wallet").set({"balance": 0})
@@ -35,7 +35,7 @@ def _create_user_doc(db: Client, uid: str, display_name: str, phone: str, is_pla
             "display_name": display_name,
             "phone": phone,
             "roles": {"player": is_player, "owner": [], "staff": []},
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
     )
 

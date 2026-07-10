@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 
@@ -103,7 +103,7 @@ def _join_match_txn(
     new_slots_open = data["slots_open"] - 1
     new_joiner_balance = joiner_balance - price_per_slot
     new_captain_balance = captain_balance + price_per_slot
-    now = datetime.now(UTC).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     transaction.update(booking_ref, {"slots_open": new_slots_open})
     transaction.set(participant_ref, {"joined_at": now})
@@ -143,11 +143,21 @@ def join_match(db: Client, tenant_id: str, booking_id: str, uid: str) -> Booking
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
     data = doc.to_dict()
     captain_uid = data["created_by"]
+    team_id = data.get("team_id")
+
     if captain_uid == uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You already own this booking")
 
     slots_total = data.get("slots_total") or 1
     price_per_slot = round(data["price"] / slots_total, 2)
+
+    # Add user to the team
+    if team_id:
+        from app.services.team_service import add_team_member
+        try:
+            add_team_member(db, team_id, uid)
+        except HTTPException:
+            pass  # User already in team or team error
 
     participant_ref = booking_ref.collection("participants").document(uid)
     result = _join_match_txn(

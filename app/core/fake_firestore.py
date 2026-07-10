@@ -48,8 +48,11 @@ class DocumentReference:
         data = self._store._get_doc(self._path)
         return DocumentSnapshot(self.id, data, data is not None, self)
 
-    def set(self, data: dict) -> None:
-        self._store._set_doc(self._path, data)
+    def set(self, data: dict, merge: bool = False) -> None:
+        if merge:
+            self._store._update_doc(self._path, data)
+        else:
+            self._store._set_doc(self._path, data)
 
     def update(self, data: dict) -> None:
         self._store._update_doc(self._path, data)
@@ -80,6 +83,9 @@ class CollectionReference:
     def order_by(self, field: str, direction: str = "ASCENDING") -> "Query":
         return Query(self._store, self._path, collection_group=False).order_by(field, direction=direction)
 
+    def limit(self, count: int) -> "Query":
+        return Query(self._store, self._path, collection_group=False).limit(count)
+
     def stream(self):
         return Query(self._store, self._path, collection_group=False).stream()
 
@@ -91,25 +97,43 @@ class Query:
         self._collection_group = collection_group
         self._filters: list = []
         self._order: tuple[str, str] | None = None
+        self._limit: int | None = None
 
     def where(self, filter) -> "Query":
         q = Query(self._store, self._path, self._collection_group)
         q._filters = [*self._filters, filter]
         q._order = self._order
+        q._limit = self._limit
         return q
 
     def order_by(self, field: str, direction: str = "ASCENDING") -> "Query":
         q = Query(self._store, self._path, self._collection_group)
         q._filters = list(self._filters)
         q._order = (field, direction)
+        q._limit = self._limit
+        return q
+
+    def limit(self, count: int) -> "Query":
+        q = Query(self._store, self._path, self._collection_group)
+        q._filters = list(self._filters)
+        q._order = self._order
+        q._limit = count
         return q
 
     def _matches(self, filter, data: dict) -> bool:
         actual = data.get(filter.field_path, _MISSING)
         if filter.op_string == "==":
             return actual == filter.value
-        if filter.op_string == ">":
-            return actual is not _MISSING and actual is not None and actual > filter.value
+        if filter.op_string in (">", ">=", "<", "<="):
+            if actual is _MISSING or actual is None:
+                return False
+            if filter.op_string == ">":
+                return actual > filter.value
+            if filter.op_string == ">=":
+                return actual >= filter.value
+            if filter.op_string == "<":
+                return actual < filter.value
+            return actual <= filter.value
         if filter.op_string == "in":
             return actual in filter.value
         raise NotImplementedError(f"Unsupported filter op: {filter.op_string}")
@@ -125,6 +149,9 @@ class Query:
         if self._order:
             field, direction = self._order
             results.sort(key=lambda item: item[1].get(field), reverse=(direction == "DESCENDING"))
+
+        if self._limit is not None:
+            results = results[: self._limit]
 
         for path, data in results:
             yield DocumentSnapshot(path[-1], data, True, DocumentReference(self._store, path))

@@ -10,6 +10,7 @@ class BookingCreateRequest(BaseModel):
     date: str  # "YYYY-MM-DD"
     start_time: str  # "HH:MM"
     end_time: str  # "HH:MM"
+    team_name: str | None = None  # Optional team name; auto-generated if not provided
 
 
 class BookingResponse(BaseModel):
@@ -23,6 +24,8 @@ class BookingResponse(BaseModel):
     price: float
     status: BookingStatus
     created_by: str
+    team_id: str | None = None
+    team_name: str | None = None
     is_joinable: bool
     slots_total: int
     slots_open: int

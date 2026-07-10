@@ -17,6 +17,7 @@ def create_court(db: Client, tenant_id: str, req: CourtCreateRequest) -> CourtRe
         "open_time": req.open_time,
         "close_time": req.close_time,
         "is_active": True,
+        "dynamic_pricing_enabled": req.dynamic_pricing_enabled,
     }
     court_ref.set(data)
     return CourtResponse(court_id=court_ref.id, tenant_id=tenant_id, **data)

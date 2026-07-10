@@ -5,7 +5,7 @@ MIN_PLAYERS) are queued for the exact same slot, the system itself forms a
 real booking, splits the cost, and debits each matched player's wallet.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 
@@ -14,6 +14,7 @@ from app.models.matchmaking import MatchRequestCreate, MatchRequestResponse
 from app.services.booking_service import bookings_ref, slot_overlaps_existing, to_minutes
 from app.services.court_service import get_court
 from app.services.wallet_service import wallet_doc_ref, wallet_tx_collection
+from app.services import notifications_service
 
 MIN_PLAYERS = {
     "badminton": 4,
@@ -66,7 +67,7 @@ def _waiting_requests_for_slot(db: Client, tenant_id: str, court_id: str, date: 
 
 
 @transactional
-def _form_match_txn(transaction, request_refs, booking_ref, wallet_refs, tx_refs, court_id, sport, date, start_time, end_time, price) -> str | None:
+def _form_match_txn(transaction, request_refs, booking_ref, wallet_refs, tx_refs, court_id, sport, date, start_time, end_time, price, team_id) -> str | None:
     request_snaps = [ref.get(transaction=transaction) for ref in request_refs]
     if not all(s.exists and s.to_dict()["status"] == "waiting" for s in request_snaps):
         return None  # a concurrent call already matched or cancelled one of these
@@ -86,7 +87,7 @@ def _form_match_txn(transaction, request_refs, booking_ref, wallet_refs, tx_refs
             detail="One of the matched players doesn't have enough wallet balance for their share",
         )
 
-    now = datetime.now(UTC).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     first_uid = request_snaps[0].to_dict()["uid"]
 
     booking_data = {
@@ -98,6 +99,8 @@ def _form_match_txn(transaction, request_refs, booking_ref, wallet_refs, tx_refs
         "price": price,
         "status": "confirmed",
         "created_by": first_uid,
+        "team_id": team_id,
+        "team_name": None,
         "is_joinable": False,
         "slots_total": count,
         "slots_open": 0,
@@ -160,7 +163,7 @@ def create_match_request(db: Client, tenant_id: str, uid: str, req: MatchRequest
         "status": "waiting",
         "min_players": min_players,
         "matched_booking_id": None,
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     request_ref.set(data)
 
@@ -175,6 +178,20 @@ def create_match_request(db: Client, tenant_id: str, uid: str, req: MatchRequest
         tx_refs = [wallet_tx_collection(db, d.to_dict()["uid"]).document() for d in waiting]
         booking_ref = bookings_ref(db, tenant_id).document()
 
+        # Create a team for the matched players
+        from app.services.team_service import create_team
+        first_uid = waiting[0].to_dict()["uid"]
+        team = create_team(db, first_uid, court.sport, f"{court.sport.title()} Queue Match")
+
+        # Add all matched players to the team
+        from app.services.team_service import add_team_member
+        for doc in waiting[1:]:
+            uid = doc.to_dict()["uid"]
+            try:
+                add_team_member(db, team.team_id, uid)
+            except HTTPException:
+                pass
+
         formed_booking_id = _form_match_txn(
             db.transaction(),
             request_refs,
@@ -187,8 +204,21 @@ def create_match_request(db: Client, tenant_id: str, uid: str, req: MatchRequest
             req.start_time,
             req.end_time,
             price,
+            team.team_id,
         )
-        if formed_booking_id is None:
+        if formed_booking_id is not None:
+            # Send notifications to all matched players
+            matched_uids = [d.to_dict()["uid"] for d in waiting]
+            try:
+                # Get venue name for notification
+                venue_doc = db.collection("tenants").document(tenant_id).get()
+                venue_name = venue_doc.to_dict().get("name", tenant_id) if venue_doc.exists else tenant_id
+                notifications_service.notify_match_formed(
+                    db, formed_booking_id, matched_uids, venue_name, court.sport, f"{req.start_time}–{req.end_time}"
+                )
+            except Exception:
+                pass  # Notification failure shouldn't block match formation
+        else:
             count_for_response = len(
                 _waiting_requests_for_slot(db, tenant_id, req.court_id, req.date, req.start_time, req.end_time)
             )

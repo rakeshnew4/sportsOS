@@ -2,9 +2,9 @@ from dataclasses import dataclass, field
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from firebase_admin import auth as firebase_auth
 
-from app.core.firebase import get_firebase_app, get_firestore_client
+from app.core.config import get_settings
+from app.core.db import get_db
 
 bearer_scheme = HTTPBearer()
 
@@ -20,9 +20,21 @@ class CurrentUser:
         return tenant_id in self.owner_of or tenant_id in self.staff_of
 
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-) -> CurrentUser:
+def _verify_uid(credentials: HTTPAuthorizationCredentials) -> str:
+    """Resolve the bearer token to a uid.
+
+    Against local_json (no real Firebase project involved in dev), the bearer
+    token is just the uid directly, so the HTTP API can be exercised without a
+    real Firebase ID token. Against firestore, verify a real Firebase ID token.
+    """
+    if get_settings().data_backend == "local_json":
+        if not credentials.credentials:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+        return credentials.credentials
+
+    from firebase_admin import auth as firebase_auth
+    from app.core.firebase import get_firebase_app
+
     get_firebase_app()
     try:
         decoded = firebase_auth.verify_id_token(credentials.credentials)
@@ -31,9 +43,14 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired auth token",
         ) from exc
+    return decoded["uid"]
 
-    uid = decoded["uid"]
-    db = get_firestore_client()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> CurrentUser:
+    uid = _verify_uid(credentials)
+    db = get_db()
     user_doc = db.collection("users").document(uid).get()
     roles = user_doc.to_dict().get("roles", {}) if user_doc.exists else {}
 
