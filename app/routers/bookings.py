@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user, require_venue_access
 from app.models.booking import AvailabilityResponse, BookingCreateRequest, BookingResponse, SlotResponse
-from app.services import booking_service
+from app.services import booking_service, invite_service
 
 router = APIRouter(tags=["bookings"])
 
@@ -12,6 +12,34 @@ router = APIRouter(tags=["bookings"])
 class CheckinRequest(BaseModel):
     """Mark a player as checked in to a match."""
     player_uid: str
+
+
+class InviteCandidate(BaseModel):
+    uid: str
+    display_name: str
+    tier: str
+    reason: str
+
+
+class InviteItem(BaseModel):
+    to_uid: str
+    tier: str
+
+
+class SendInvitesRequest(BaseModel):
+    invites: list[InviteItem]
+
+
+class MatchInviteResponse(BaseModel):
+    invite_id: str
+    booking_id: str
+    from_uid: str
+    to_uid: str
+    tier: str
+    status: str
+    title: str
+    body: str
+    created_at: str
 
 
 class MatchCompletionResponse(BaseModel):
@@ -115,3 +143,36 @@ def get_checkins(
 ) -> dict:
     """Get check-in status for all players in a match."""
     return booking_service.get_checkins(db, tenant_id, booking_id)
+
+
+@router.get("/venues/{tenant_id}/bookings/{booking_id}/invite-candidates")
+def get_invite_candidates(
+    tenant_id: str,
+    booking_id: str,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[InviteCandidate]:
+    """Ranked, tiered list of players the captain can invite: playmates first, then queued players, then opted-in nearby players."""
+    candidates = invite_service.get_invite_candidates(db, tenant_id, booking_id, user.uid)
+    return [InviteCandidate(**c) for c in candidates]
+
+
+@router.post("/venues/{tenant_id}/bookings/{booking_id}/invites", status_code=201)
+def send_invites(
+    tenant_id: str,
+    booking_id: str,
+    req: SendInvitesRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[MatchInviteResponse]:
+    """Send match invites (AI-personalized notification text where available)."""
+    invites = invite_service.send_invites(
+        db, tenant_id, booking_id, user.uid, [i.model_dump() for i in req.invites]
+    )
+    return [
+        MatchInviteResponse(
+            invite_id=i.invite_id, booking_id=i.booking_id, from_uid=i.from_uid, to_uid=i.to_uid,
+            tier=i.tier, status=i.status, title=i.title, body=i.body, created_at=i.created_at.isoformat(),
+        )
+        for i in invites
+    ]

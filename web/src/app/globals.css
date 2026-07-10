@@ -6,6 +6,7 @@
   --surface: #ffffff;
   --surface-muted: #f1f2f8;
   --ink-muted: #6b7280;
+  --border: rgba(17, 19, 26, 0.08);
   --brand-from: #4f46e5;
   --brand-to: #7c3aed;
 }
@@ -16,6 +17,7 @@
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-ink-muted: var(--ink-muted);
+  --color-border: var(--border);
   --color-brand-from: var(--brand-from);
   --color-brand-to: var(--brand-to);
   --font-sans: var(--font-geist-sans);
@@ -29,6 +31,7 @@
     --surface: #16171d;
     --surface-muted: #1d1f27;
     --ink-muted: #9199a8;
+    --border: rgba(255, 255, 255, 0.1);
   }
 }
 

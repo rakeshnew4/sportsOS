@@ -11,7 +11,7 @@ export default async function PlayerLayout({ children }: { children: React.React
     <SessionProvider session={session}>
       <div className="flex min-h-screen flex-col md:flex-row">
         <PlayerNav />
-        <main className="flex-1 p-4 pb-20 md:pb-8 md:p-8 max-w-3xl mx-auto w-full">{children}</main>
+        <main className="flex-1 p-4 pb-20 md:pb-8 md:p-8 lg:p-10 max-w-5xl mx-auto w-full">{children}</main>
       </div>
     </SessionProvider>
   );

@@ -21,10 +21,10 @@ export function DateStrip({
           <button
             key={iso}
             onClick={() => onSelect(iso)}
-            className={`flex flex-col items-center justify-center min-w-14 rounded-xl px-3 py-2 text-sm font-medium border transition-colors ${
+            className={`flex flex-col items-center justify-center min-w-14 rounded-2xl px-3 py-2 text-sm font-semibold transition-colors ${
               isSelected
-                ? "bg-emerald-600 text-white border-emerald-600"
-                : "bg-white text-neutral-700 border-neutral-200"
+                ? "bg-gradient-to-br from-brand-from to-brand-to text-white shadow-md shadow-indigo-600/25"
+                : "bg-surface text-foreground border border-border"
             }`}
           >
             <span className="text-xs opacity-80">{weekday}</span>

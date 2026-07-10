@@ -17,6 +17,11 @@ export function listMyTeams() {
   return apiFetch<TeamResponse[]>(`/teams/me`);
 }
 
+export function suggestTeamNames(sport: string, playerName: string) {
+  const qs = new URLSearchParams({ sport, player_name: playerName });
+  return apiFetch<{ suggestions: string[] }>(`/teams/suggest-names?${qs.toString()}`);
+}
+
 export function discoverOpponentChallenges(params?: { sport?: string; date?: string }) {
   const qs = new URLSearchParams();
   if (params?.sport) qs.set("sport", params.sport);

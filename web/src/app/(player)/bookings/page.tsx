@@ -2,16 +2,14 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { CalendarX2, IndianRupee } from "lucide-react";
 import { listMyBookings } from "@/lib/api/bookings";
 import { queryKeys } from "@/lib/queryKeys";
-import type { BookingStatus } from "@/lib/types";
-
-const STATUS_STYLES: Record<BookingStatus, string> = {
-  confirmed: "bg-emerald-50 text-emerald-700",
-  pending_payment: "bg-amber-50 text-amber-700",
-  completed: "bg-neutral-100 text-neutral-600",
-  cancelled: "bg-red-50 text-red-600",
-};
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SkeletonCard } from "@/components/ui/Skeleton";
+import { getSportTheme, sportLabel } from "@/lib/sportTheme";
 
 export default function BookingsPage() {
   const { data: bookings, isLoading } = useQuery({
@@ -25,40 +23,45 @@ export default function BookingsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold">My bookings</h1>
-        <p className="text-neutral-500 text-sm">Courts you've booked.</p>
+        <p className="text-ink-muted text-sm">Courts you've booked.</p>
       </div>
 
-      {isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+      {isLoading && (
+        <div className="space-y-3">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      )}
       {sorted && sorted.length === 0 && (
-        <p className="text-sm text-neutral-500">No bookings yet — go book a court.</p>
+        <EmptyState icon={CalendarX2} title="No bookings yet" description="Go book a court to get started." />
       )}
 
       <div className="space-y-3">
-        {sorted?.map((booking) => (
-          <Link
-            key={booking.booking_id}
-            href={`/bookings/${booking.booking_id}`}
-            className="block rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm hover:border-neutral-300"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-semibold text-neutral-900">{booking.sport.replace("_", " ")}</p>
-                <p className="text-sm text-neutral-500">
-                  {booking.date} · {booking.start_time} – {booking.end_time}
+        {sorted?.map((booking) => {
+          const theme = getSportTheme(booking.sport);
+          return (
+            <Link key={booking.booking_id} href={`/bookings/${booking.booking_id}`}>
+              <Card accentGradient={theme.gradient} interactive>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-semibold">{sportLabel(booking.sport)}</p>
+                    <p className="text-sm text-ink-muted">
+                      {booking.date} · {booking.start_time} – {booking.end_time}
+                    </p>
+                    {booking.team_name && (
+                      <p className="text-xs text-ink-muted mt-1">{booking.team_name}</p>
+                    )}
+                  </div>
+                  <Badge status={booking.status}>{booking.status.replace("_", " ")}</Badge>
+                </div>
+                <p className="text-sm font-semibold mt-2 flex items-center gap-0.5">
+                  <IndianRupee size={13} />
+                  {booking.price}
                 </p>
-                {booking.team_name && (
-                  <p className="text-xs text-neutral-400 mt-1">{booking.team_name}</p>
-                )}
-              </div>
-              <span
-                className={`text-xs font-medium rounded-full px-2 py-1 ${STATUS_STYLES[booking.status]}`}
-              >
-                {booking.status.replace("_", " ")}
-              </span>
-            </div>
-            <p className="text-sm font-medium text-neutral-700 mt-2">₹{booking.price}</p>
-          </Link>
-        ))}
+              </Card>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

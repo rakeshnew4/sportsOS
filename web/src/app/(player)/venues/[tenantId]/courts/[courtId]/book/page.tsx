@@ -1,16 +1,21 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getCourt } from "@/lib/api/venues";
 import { getSlots, createBooking } from "@/lib/api/bookings";
+import { suggestTeamNames } from "@/lib/api/teams";
 import { queryKeys } from "@/lib/queryKeys";
 import { toISODate } from "@/lib/date";
 import { DateStrip } from "@/components/booking/DateStrip";
 import { SlotGrid } from "@/components/booking/SlotGrid";
 import { BookingSummary } from "@/components/booking/BookingSummary";
 import { ApiError } from "@/lib/api/client";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { getSportTheme, sportLabel } from "@/lib/sportTheme";
+import { IndianRupee } from "lucide-react";
+import { useSession } from "@/components/providers/SessionProvider";
 
 const MIN_SLOT_LENGTH = 2; // 2 x 30min = 1 hour minimum, enforced by the backend
 
@@ -22,21 +27,35 @@ export default function BookCourtPage({
   const { tenantId, courtId } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const session = useSession();
 
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [selectedStart, setSelectedStart] = useState<number | null>(null);
   const [selectedLength, setSelectedLength] = useState(MIN_SLOT_LENGTH);
   const [error, setError] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState("");
 
   const { data: court } = useQuery({
     queryKey: ["court", tenantId, courtId],
     queryFn: () => getCourt(tenantId, courtId),
   });
 
+  const { data: nameSuggestions, refetch: refetchNames, isFetching: isFetchingNames } = useQuery({
+    queryKey: ["teamNameSuggestions", court?.sport, session.display_name],
+    queryFn: () => suggestTeamNames(court!.sport, session.display_name || "Captain"),
+    enabled: !!court?.sport,
+  });
+
   const { data: slots, isLoading } = useQuery({
     queryKey: queryKeys.slots(tenantId, courtId, date),
     queryFn: () => getSlots(tenantId, courtId, date),
   });
+
+  useEffect(() => {
+    if (!teamName && nameSuggestions?.suggestions?.length) {
+      setTeamName(nameSuggestions.suggestions[0]);
+    }
+  }, [nameSuggestions, teamName]);
 
   const bookMutation = useMutation({
     mutationFn: () => {
@@ -47,6 +66,7 @@ export default function BookCourtPage({
         date,
         start_time: selected[0].start_time,
         end_time: selected[selected.length - 1].end_time,
+        team_name: teamName.trim() || undefined,
       });
     },
     onSuccess: () => {
@@ -88,20 +108,37 @@ export default function BookCourtPage({
   const selectedSlots =
     slots && selectedStart !== null ? slots.slice(selectedStart, selectedStart + selectedLength) : [];
 
+  const theme = getSportTheme(court?.sport);
+  const Icon = theme.icon;
+
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold">{court?.name || "Loading…"}</h1>
-        <p className="text-neutral-500 text-sm">
-          {court && `${court.sport.replace("_", " ")} · ₹${court.hourly_price}/hr`}
-        </p>
+      <div className="flex items-center gap-3">
+        <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${theme.light}`}>
+          <Icon size={20} strokeWidth={2.25} />
+        </span>
+        <div>
+          {court ? <h1 className="text-xl font-bold">{court.name}</h1> : <Skeleton className="h-6 w-32" />}
+          {court && (
+            <p className="text-ink-muted text-sm flex items-center gap-1">
+              {sportLabel(court.sport)} · <IndianRupee size={12} />
+              {court.hourly_price}/hr
+            </p>
+          )}
+        </div>
       </div>
 
       <DateStrip selected={date} onSelect={handleSelectDate} />
 
-      {isLoading && <p className="text-sm text-neutral-500">Loading slots…</p>}
+      {isLoading && (
+        <div className="grid grid-cols-4 gap-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-9" />
+          ))}
+        </div>
+      )}
       {slots && slots.length === 0 && (
-        <p className="text-sm text-neutral-500">No slots available for this date.</p>
+        <p className="text-sm text-ink-muted">No slots available for this date.</p>
       )}
       {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -124,6 +161,11 @@ export default function BookCourtPage({
         onConfirm={() => bookMutation.mutate()}
         onClear={() => setSelectedStart(null)}
         loading={bookMutation.isPending}
+        teamName={teamName}
+        onTeamNameChange={setTeamName}
+        nameSuggestions={nameSuggestions?.suggestions ?? []}
+        onShuffleNames={() => refetchNames()}
+        isShufflingNames={isFetchingNames}
       />
     </div>
   );

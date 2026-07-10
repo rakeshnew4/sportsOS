@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Users2, Zap } from "lucide-react";
 import {
   cancelMatchRequest,
   createMatchRequest,
@@ -15,7 +16,11 @@ import { queryKeys } from "@/lib/queryKeys";
 import { toISODate } from "@/lib/date";
 import { useSession } from "@/components/providers/SessionProvider";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api/client";
+import { getSportTheme, sportLabel } from "@/lib/sportTheme";
 
 type Tab = "open" | "queue";
 
@@ -26,16 +31,18 @@ export default function PlayPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold">Play</h1>
-        <p className="text-neutral-500 text-sm">Join an open match or queue up to find players.</p>
+        <p className="text-ink-muted text-sm">Join an open match or queue up to find players.</p>
       </div>
 
-      <div className="flex gap-2 rounded-xl bg-neutral-100 p-1">
+      <div className="flex gap-1 rounded-2xl bg-surface-muted p-1">
         {(["open", "queue"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
-              tab === t ? "bg-white shadow-sm text-neutral-900" : "text-neutral-500"
+            className={`flex-1 rounded-xl py-2.5 text-sm font-semibold transition-colors ${
+              tab === t
+                ? "bg-gradient-to-r from-brand-from to-brand-to text-white shadow-md shadow-indigo-600/20"
+                : "text-ink-muted"
             }`}
           >
             {t === "open" ? "Open matches" : "Find players"}
@@ -79,56 +86,63 @@ function OpenMatches() {
           placeholder="Sport"
           value={sport}
           onChange={(e) => setSport(e.target.value)}
-          className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <input
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="rounded-xl border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+      {isLoading && (
+        <div className="space-y-3">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      )}
       {matches && matches.length === 0 && (
-        <p className="text-sm text-neutral-500">No open matches right now.</p>
+        <EmptyState icon={Zap} title="No open matches right now" description="Check back later or start your own." />
       )}
 
       <div className="space-y-3">
-        {matches?.map((match) => (
-          <div
-            key={match.booking_id}
-            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-semibold text-neutral-900">{match.sport.replace("_", " ")}</p>
-                <p className="text-sm text-neutral-500">{match.tenant_name}</p>
-                <p className="text-sm text-neutral-500">
-                  {match.date} · {match.start_time} – {match.end_time}
-                </p>
+        {matches?.map((match) => {
+          const theme = getSportTheme(match.sport);
+          return (
+            <Card key={match.booking_id} accentGradient={theme.gradient}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-semibold">{sportLabel(match.sport)}</p>
+                  <p className="text-sm text-ink-muted">{match.tenant_name}</p>
+                  <p className="text-sm text-ink-muted">
+                    {match.date} · {match.start_time} – {match.end_time}
+                  </p>
+                </div>
+                <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${theme.light}`}>
+                  {match.slots_open} open
+                </span>
               </div>
-              <span className="text-xs font-medium rounded-full px-2 py-1 bg-emerald-50 text-emerald-700">
-                {match.slots_open} open
-              </span>
-            </div>
-            <div className="mt-3 flex items-center justify-between">
-              <Link
-                href={`/bookings/${match.booking_id}`}
-                className="text-xs font-medium text-neutral-500 hover:text-neutral-800"
-              >
-                View details
-              </Link>
-              <Button
-                onClick={() => joinMutation.mutate({ tenantId: match.tenant_id, bookingId: match.booking_id })}
-                disabled={joinMutation.isPending}
-              >
-                {joinMutation.isPending ? "Joining…" : "Join"}
-              </Button>
-            </div>
-          </div>
-        ))}
+              <div className="mt-3 flex items-center justify-between">
+                <Link
+                  href={`/bookings/${match.booking_id}`}
+                  className="text-xs font-medium text-ink-muted hover:text-foreground"
+                >
+                  View details
+                </Link>
+                <Button
+                  variant="gradient"
+                  onClick={() => joinMutation.mutate({ tenantId: match.tenant_id, bookingId: match.booking_id })}
+                  disabled={joinMutation.isPending}
+                  className="text-xs px-4 py-2"
+                >
+                  {joinMutation.isPending ? "Joining…" : "Join"}
+                </Button>
+              </div>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
@@ -180,15 +194,15 @@ function FindPlayers() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-3">
-        <p className="text-sm font-semibold text-neutral-700">Queue for a match</p>
+      <Card className="space-y-3">
+        <p className="text-sm font-semibold">Queue for a match</p>
         <select
           value={tenantId}
           onChange={(e) => {
             setTenantId(e.target.value);
             setCourtId("");
           }}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
           <option value="">Select venue…</option>
           {venues?.map((v) => (
@@ -201,12 +215,12 @@ function FindPlayers() {
           value={courtId}
           onChange={(e) => setCourtId(e.target.value)}
           disabled={!tenantId}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
           <option value="">Select court…</option>
           {courts?.map((c) => (
             <option key={c.court_id} value={c.court_id}>
-              {c.name} · {c.sport.replace("_", " ")}
+              {c.name} · {sportLabel(c.sport)}
             </option>
           ))}
         </select>
@@ -215,22 +229,23 @@ function FindPlayers() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
           <input
             type="time"
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
-            className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
           <input
             type="time"
             value={endTime}
             onChange={(e) => setEndTime(e.target.value)}
-            className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
         <Button
+          variant="gradient"
           onClick={() => queueMutation.mutate()}
           disabled={!tenantId || !courtId || queueMutation.isPending}
           className="w-full"
@@ -238,39 +253,50 @@ function FindPlayers() {
           {queueMutation.isPending ? "Joining queue…" : "Join queue"}
         </Button>
         {error && <p className="text-sm text-red-600">{error}</p>}
-      </div>
+      </Card>
 
       {tenantId && courtId && (
         <div>
-          <p className="text-sm font-semibold text-neutral-700 mb-2">Queue for this court/date</p>
-          {isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+          <p className="text-sm font-semibold mb-2">Queue for this court/date</p>
+          {isLoading && <SkeletonCard />}
           {requests && requests.length === 0 && (
-            <p className="text-sm text-neutral-500">No one queued yet — be the first.</p>
+            <EmptyState icon={Users2} title="No one queued yet" description="Be the first to start the queue." />
           )}
           <div className="space-y-2">
-            {requests?.map((r) => (
-              <div
-                key={r.request_id}
-                className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-4 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium text-neutral-900">
-                    {r.start_time} – {r.end_time} · {r.current_count}/{r.min_players} players
-                    {r.uid === session.uid && <span className="text-emerald-600"> (you)</span>}
-                  </p>
-                  <p className="text-xs text-neutral-400">{r.status}</p>
-                </div>
-                {r.uid === session.uid && r.status === "waiting" && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => cancelMutation.mutate(r.request_id)}
-                    disabled={cancelMutation.isPending}
-                  >
-                    Cancel
-                  </Button>
-                )}
-              </div>
-            ))}
+            {requests?.map((r) => {
+              const pct = Math.min(100, Math.round((r.current_count / r.min_players) * 100));
+              const isMe = r.uid === session.uid;
+              return (
+                <Card key={r.request_id}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium">
+                      {r.start_time} – {r.end_time}
+                      {isMe && <span className="text-indigo-600"> (you)</span>}
+                    </p>
+                    {isMe && r.status === "waiting" && (
+                      <button
+                        onClick={() => cancelMutation.mutate(r.request_id)}
+                        disabled={cancelMutation.isPending}
+                        className="text-xs font-medium text-red-600"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 rounded-full bg-surface-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-brand-from to-brand-to transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-ink-muted whitespace-nowrap">
+                      {r.current_count}/{r.min_players}
+                    </span>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}

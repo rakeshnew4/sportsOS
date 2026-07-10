@@ -2,6 +2,7 @@
 
 import { use, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Star, UserPlus, Users2 } from "lucide-react";
 import { cancelBooking, getMyBooking, openToCommunity } from "@/lib/api/bookings";
 import { joinMatch, listParticipants } from "@/lib/api/matches";
 import {
@@ -12,18 +13,15 @@ import {
   leaveWaitlist,
 } from "@/lib/api/waitlist";
 import { createRating } from "@/lib/api/ratings";
+import { getInviteCandidates, sendInvites } from "@/lib/api/invites";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSession } from "@/components/providers/SessionProvider";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { ApiError } from "@/lib/api/client";
-import type { BookingStatus } from "@/lib/types";
-
-const STATUS_STYLES: Record<BookingStatus, string> = {
-  confirmed: "bg-emerald-50 text-emerald-700",
-  pending_payment: "bg-amber-50 text-amber-700",
-  completed: "bg-neutral-100 text-neutral-600",
-  cancelled: "bg-red-50 text-red-600",
-};
+import { getSportTheme, sportLabel } from "@/lib/sportTheme";
+import { toISODate } from "@/lib/date";
 
 export default function BookingDetailPage({ params }: { params: Promise<{ bookingId: string }> }) {
   const { bookingId } = use(params);
@@ -127,12 +125,51 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
 
   const [ratedUids, setRatedUids] = useState<string[]>([]);
 
-  if (isLoading) return <p className="text-sm text-neutral-500">Loading…</p>;
-  if (!booking) return <p className="text-sm text-neutral-500">Booking not found.</p>;
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [selectedInvites, setSelectedInvites] = useState<Record<string, string>>({}); // uid -> tier
+  const [invitesSent, setInvitesSent] = useState(false);
+
+  const { data: inviteCandidates, isLoading: candidatesLoading } = useQuery({
+    queryKey: tenantId ? queryKeys.inviteCandidates(tenantId, bookingId) : ["inviteCandidates", "pending"],
+    queryFn: () => getInviteCandidates(tenantId!, bookingId),
+    enabled: !!tenantId && inviteOpen,
+  });
+
+  const sendInvitesMutation = useMutation({
+    mutationFn: () =>
+      sendInvites(
+        tenantId!,
+        bookingId,
+        Object.entries(selectedInvites).map(([to_uid, tier]) => ({ to_uid, tier }))
+      ),
+    onSuccess: () => {
+      setError(null);
+      setInvitesSent(true);
+      setSelectedInvites({});
+      queryClient.invalidateQueries({ queryKey: queryKeys.inviteCandidates(tenantId!, bookingId) });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "Could not send invites"),
+  });
+
+  function toggleInvite(uid: string, tier: string) {
+    setSelectedInvites((prev) => {
+      const next = { ...prev };
+      if (next[uid]) delete next[uid];
+      else next[uid] = tier;
+      return next;
+    });
+  }
+
+  if (isLoading) return <p className="text-sm text-ink-muted">Loading…</p>;
+  if (!booking) return <p className="text-sm text-ink-muted">Booking not found.</p>;
+
+  const theme = getSportTheme(booking.sport);
+  const Icon = theme.icon;
 
   const isOwner = booking.created_by === session.uid;
   const canCancel = isOwner && (booking.status === "confirmed" || booking.status === "pending_payment");
   const canOpen = isOwner && booking.status === "confirmed";
+  const canInvite = isOwner && booking.status === "confirmed" && booking.date >= toISODate(new Date());
   const canJoin = !isOwner && booking.is_joinable && booking.slots_open > 0 && booking.status === "confirmed";
   const isParticipant = isOwner || (participants?.some((p) => p.uid === session.uid) ?? false);
   const canWaitlist =
@@ -149,40 +186,118 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-bold">{booking.sport.replace("_", " ")}</h1>
-          <p className="text-neutral-500 text-sm">
-            {booking.date} · {booking.start_time} – {booking.end_time}
-          </p>
-          {booking.team_name && <p className="text-xs text-neutral-400 mt-1">{booking.team_name}</p>}
+        <div className="flex items-center gap-3">
+          <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${theme.light}`}>
+            <Icon size={20} strokeWidth={2.25} />
+          </span>
+          <div>
+            <h1 className="text-xl font-bold">{sportLabel(booking.sport)}</h1>
+            <p className="text-ink-muted text-sm">
+              {booking.date} · {booking.start_time} – {booking.end_time}
+            </p>
+            {booking.team_name && <p className="text-xs text-ink-muted mt-0.5">{booking.team_name}</p>}
+          </div>
         </div>
-        <span className={`text-xs font-medium rounded-full px-2 py-1 ${STATUS_STYLES[booking.status]}`}>
-          {booking.status.replace("_", " ")}
-        </span>
+        <Badge status={booking.status}>{booking.status.replace("_", " ")}</Badge>
       </div>
 
-      <p className="text-sm font-medium text-neutral-700">₹{booking.price}</p>
+      <p className="text-sm font-semibold">₹{booking.price}</p>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-        <p className="text-sm font-semibold text-neutral-700 mb-2">
-          Players ({participants?.length ?? 0})
+      <Card>
+        <p className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+          <Users2 size={15} /> Players ({participants?.length ?? 0})
         </p>
         <div className="space-y-1">
           {participants?.map((p) => (
-            <p key={p.uid} className="text-sm text-neutral-600">
+            <p key={p.uid} className="text-sm text-ink-muted">
               {p.display_name || p.uid}
             </p>
           ))}
           {participants && participants.length === 0 && (
-            <p className="text-sm text-neutral-400">No one has joined yet.</p>
+            <p className="text-sm text-ink-muted/70">No one has joined yet.</p>
           )}
         </div>
-      </div>
+      </Card>
+
+      {canInvite && (
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold flex items-center gap-1.5">
+              <UserPlus size={15} /> Invite players
+            </p>
+            {!inviteOpen && (
+              <Button variant="secondary" onClick={() => setInviteOpen(true)} className="text-xs px-3 py-1.5">
+                Find players
+              </Button>
+            )}
+          </div>
+
+          {inviteOpen && (
+            <>
+              {candidatesLoading && <p className="text-xs text-ink-muted">Finding players…</p>}
+              {invitesSent && (
+                <p className="text-xs text-emerald-600">Invites sent! They'll show up in the players' notifications.</p>
+              )}
+              {inviteCandidates && inviteCandidates.length === 0 && (
+                <p className="text-xs text-ink-muted/70">
+                  No one to suggest right now — no past playmates, no one queued for this slot, and no
+                  nearby players opted in to invites.
+                </p>
+              )}
+              {inviteCandidates && inviteCandidates.length > 0 && (
+                <>
+                  {(["playmate", "queue", "nearby"] as const).map((tier) => {
+                    const inTier = inviteCandidates.filter((c) => c.tier === tier);
+                    if (inTier.length === 0) return null;
+                    const tierLabel =
+                      tier === "playmate"
+                        ? "Played with before"
+                        : tier === "queue"
+                        ? "Looking for a game right now"
+                        : "Nearby, open to invites";
+                    return (
+                      <div key={tier} className="space-y-1.5">
+                        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">{tierLabel}</p>
+                        {inTier.map((c) => (
+                          <label
+                            key={c.uid}
+                            className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!selectedInvites[c.uid]}
+                              onChange={() => toggleInvite(c.uid, c.tier)}
+                            />
+                            <span className="flex-1">{c.display_name}</span>
+                            <span className="text-xs text-ink-muted">{c.reason}</span>
+                          </label>
+                        ))}
+                      </div>
+                    );
+                  })}
+                  <Button
+                    variant="gradient"
+                    onClick={() => sendInvitesMutation.mutate()}
+                    disabled={Object.keys(selectedInvites).length === 0 || sendInvitesMutation.isPending}
+                    className="w-full"
+                  >
+                    {sendInvitesMutation.isPending
+                      ? "Sending…"
+                      : `Send invite${Object.keys(selectedInvites).length === 1 ? "" : "s"}${
+                          Object.keys(selectedInvites).length ? ` (${Object.keys(selectedInvites).length})` : ""
+                        }`}
+                  </Button>
+                </>
+              )}
+            </>
+          )}
+        </Card>
+      )}
 
       {canJoin && (
-        <Button onClick={() => joinMutation.mutate()} disabled={joinMutation.isPending} className="w-full">
+        <Button variant="gradient" onClick={() => joinMutation.mutate()} disabled={joinMutation.isPending} className="w-full">
           {joinMutation.isPending ? "Joining…" : `Join this match (${booking.slots_open} open)`}
         </Button>
       )}
@@ -199,14 +314,13 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
       )}
 
       {waitlistPosition && (
-        <div className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-2">
-          <p className="text-sm font-semibold text-neutral-700">
-            Waitlist position #{waitlistPosition.position}
-          </p>
-          <p className="text-xs text-neutral-500 capitalize">Status: {waitlistPosition.status}</p>
+        <Card className="space-y-2">
+          <p className="text-sm font-semibold">Waitlist position #{waitlistPosition.position}</p>
+          <p className="text-xs text-ink-muted capitalize">Status: {waitlistPosition.status}</p>
           {waitlistPosition.status === "promoted" ? (
             <div className="flex gap-2">
               <Button
+                variant="gradient"
                 onClick={() => confirmWaitlistMutation.mutate()}
                 disabled={confirmWaitlistMutation.isPending}
               >
@@ -230,32 +344,26 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
               Leave waitlist
             </Button>
           )}
-        </div>
+        </Card>
       )}
 
       {canOpen && !booking.is_joinable && (
-        <div className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-2">
-          <p className="text-sm font-semibold text-neutral-700">Open to the community</p>
-          <p className="text-xs text-neutral-500">
-            Let other players join your slot and split the cost.
-          </p>
+        <Card className="space-y-2">
+          <p className="text-sm font-semibold">Open to the community</p>
+          <p className="text-xs text-ink-muted">Let other players join your slot and split the cost.</p>
           <div className="flex gap-2">
             <input
               type="number"
               min={1}
               value={slotsOpen}
               onChange={(e) => setSlotsOpen(e.target.value)}
-              className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-24 rounded-xl border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
-            <Button
-              variant="secondary"
-              onClick={() => openMutation.mutate()}
-              disabled={openMutation.isPending}
-            >
+            <Button variant="gradient" onClick={() => openMutation.mutate()} disabled={openMutation.isPending}>
               {openMutation.isPending ? "Opening…" : "Open slot"}
             </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {canCancel && (
@@ -270,8 +378,8 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
       )}
 
       {booking.status === "completed" && otherPlayers.length > 0 && (
-        <div className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-3">
-          <p className="text-sm font-semibold text-neutral-700">Rate your teammates</p>
+        <Card className="space-y-3">
+          <p className="text-sm font-semibold">Rate your teammates</p>
           {otherPlayers.map((uid) => (
             <RatingForm
               key={uid}
@@ -280,7 +388,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
               onRated={() => setRatedUids((prev) => [...prev, uid])}
             />
           ))}
-        </div>
+        </Card>
       )}
     </div>
   );
@@ -306,16 +414,15 @@ function RatingForm({
   });
 
   return (
-    <div className="space-y-1.5 border-t border-neutral-100 pt-3 first:border-t-0 first:pt-0">
-      <p className="text-sm text-neutral-600 font-mono">{ratedUid.slice(0, 8)}…</p>
+    <div className="space-y-1.5 border-t border-border pt-3 first:border-t-0 first:pt-0">
+      <p className="text-sm text-ink-muted font-mono">{ratedUid.slice(0, 8)}…</p>
       <div className="flex gap-1">
         {[1, 2, 3, 4, 5].map((n) => (
-          <button
-            key={n}
-            onClick={() => setRating(n)}
-            className={`text-lg ${n <= rating ? "opacity-100" : "opacity-30"}`}
-          >
-            ⭐
+          <button key={n} onClick={() => setRating(n)}>
+            <Star
+              size={20}
+              className={n <= rating ? "fill-amber-400 text-amber-400" : "text-ink-muted/40"}
+            />
           </button>
         ))}
       </div>
@@ -323,7 +430,7 @@ function RatingForm({
         placeholder="Comment (optional)"
         value={comment}
         onChange={(e) => setComment(e.target.value)}
-        className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        className="w-full rounded-xl border border-border bg-surface px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
       />
       {localError && <p className="text-xs text-red-600">{localError}</p>}
       <Button

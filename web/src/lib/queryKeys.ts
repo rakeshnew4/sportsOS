@@ -29,4 +29,8 @@ export const queryKeys = {
   myWaitlistPosition: (bookingId: string) => ["myWaitlistPosition", bookingId] as const,
   notifications: (unreadOnly?: boolean) => ["notifications", unreadOnly ?? false] as const,
   notificationPreferences: () => ["notificationPreferences"] as const,
+  inviteCandidates: (tenantId: string, bookingId: string) =>
+    ["inviteCandidates", tenantId, bookingId] as const,
+  myInvites: () => ["myInvites"] as const,
+  invitePreferences: () => ["invitePreferences"] as const,
 };

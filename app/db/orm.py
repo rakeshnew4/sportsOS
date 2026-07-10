@@ -364,3 +364,35 @@ class Rating(Base):
 
     __table_args__ = (UniqueConstraint("from_uid", "to_uid", "booking_id", name="uq_rating_booking"),)
 
+
+# ---------------------------------------------------------------------------
+# Match invitations
+# ---------------------------------------------------------------------------
+
+class PlayerInvitePreference(Base):
+    __tablename__ = "player_invite_preferences"
+
+    uid = Column(String, ForeignKey("users.uid", ondelete="CASCADE"), primary_key=True)
+    open_to_invites = Column(Boolean, nullable=False, default=False)
+    radius_km = Column(Float, nullable=False, default=10.0)
+    preferred_court_ids = Column(JSONB, nullable=False, default=list)  # [] = any court
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class MatchInvite(Base):
+    __tablename__ = "match_invites"
+
+    invite_id = Column(String, primary_key=True, default=_new_uuid)
+    tenant_id = Column(String, nullable=False, index=True)
+    booking_id = Column(String, ForeignKey("bookings.booking_id", ondelete="CASCADE"), nullable=False, index=True)
+    from_uid = Column(String, ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    to_uid = Column(String, ForeignKey("users.uid", ondelete="CASCADE"), nullable=False, index=True)
+    tier = Column(String, nullable=False)  # "playmate" | "queue" | "nearby"
+    status = Column(String, nullable=False, default="pending")  # pending | accepted | declined | expired
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    responded_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (UniqueConstraint("booking_id", "to_uid", name="uq_match_invite"),)
+

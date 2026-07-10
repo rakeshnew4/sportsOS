@@ -26,6 +26,18 @@ class PlayerSearchResult(BaseModel):
     total: int
 
 
+class InvitePreferences(BaseModel):
+    open_to_invites: bool
+    radius_km: float
+    preferred_court_ids: list[str]
+
+
+class InvitePreferencesUpdate(BaseModel):
+    open_to_invites: bool | None = None
+    radius_km: float | None = None
+    preferred_court_ids: list[str] | None = None
+
+
 def _build_profile(db: Session, uid: str, expose_phone: bool = False) -> PlayerProfile:
     from app.models.kpi import PlayerKPIScope
     from app.services import kpi_service
@@ -94,6 +106,35 @@ def search_players(
         ))
     results.sort(key=lambda p: p.total_hours_played, reverse=True)
     return PlayerSearchResult(players=results, total=len(results))
+
+
+@router.get("/me/invite-preferences")
+def get_invite_preferences(
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> InvitePreferences:
+    """Whether this player is open to receiving match invites from players they haven't played with, and within what radius/courts."""
+    from app.services import invite_service
+    pref = invite_service.get_invite_preferences(db, user.uid)
+    return InvitePreferences(
+        open_to_invites=pref.open_to_invites, radius_km=pref.radius_km, preferred_court_ids=pref.preferred_court_ids,
+    )
+
+
+@router.put("/me/invite-preferences")
+def update_invite_preferences(
+    req: InvitePreferencesUpdate,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> InvitePreferences:
+    from app.services import invite_service
+    pref = invite_service.update_invite_preferences(
+        db, user.uid,
+        open_to_invites=req.open_to_invites, radius_km=req.radius_km, preferred_court_ids=req.preferred_court_ids,
+    )
+    return InvitePreferences(
+        open_to_invites=pref.open_to_invites, radius_km=pref.radius_km, preferred_court_ids=pref.preferred_court_ids,
+    )
 
 
 

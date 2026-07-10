@@ -19,6 +19,7 @@ NotificationType = Literal[
     "slot_cancelled",
     "friend_activity",
     "match_formed",
+    "match_invite",
 ]
 
 

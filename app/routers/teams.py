@@ -11,6 +11,10 @@ from app.models.team import TeamMember
 router = APIRouter(prefix="/teams", tags=["teams"])
 
 
+class TeamNameSuggestions(BaseModel):
+    suggestions: list[str]
+
+
 def _display_name(db: Session, uid: str) -> str:
     user = db.query(User).filter(User.uid == uid).first()
     return user.display_name if user and user.display_name else uid
@@ -72,6 +76,18 @@ class TeamOpponentResponse(BaseModel):
 
 
 # Team Management
+
+@router.get("/suggest-names")
+def suggest_team_names(
+    sport: str,
+    player_name: str,
+    user: CurrentUser = Depends(get_current_user),
+) -> TeamNameSuggestions:
+    """AI-generated team name suggestions for a new team (falls back to a generic name if the LLM is unavailable)."""
+    from app.services.llm_service import generate_team_name_suggestions
+    names = generate_team_name_suggestions(sport, player_name, num_suggestions=5)
+    return TeamNameSuggestions(suggestions=names)
+
 
 def _to_team_response(db: Session, team) -> "TeamResponse":
     stats = team.stats

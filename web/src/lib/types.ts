@@ -373,6 +373,31 @@ export interface NotificationPreferences {
   quiet_hours_end: string | null;
 }
 
+export interface InviteCandidate {
+  uid: string;
+  display_name: string;
+  tier: "playmate" | "queue" | "nearby";
+  reason: string;
+}
+
+export interface MatchInviteResponse {
+  invite_id: string;
+  booking_id: string;
+  from_uid: string;
+  to_uid: string;
+  tier: string;
+  status: "pending" | "accepted" | "declined" | "expired";
+  title: string;
+  body: string;
+  created_at: string;
+}
+
+export interface InvitePreferences {
+  open_to_invites: boolean;
+  radius_km: number;
+  preferred_court_ids: string[];
+}
+
 export interface RatingCreate {
   rated_uid: string;
   booking_id: string;
