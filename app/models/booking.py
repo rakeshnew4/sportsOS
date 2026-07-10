@@ -41,3 +41,10 @@ class AvailabilityResponse(BaseModel):
     date: str
     open_slots: list[TimeRange]
     booked_slots: list[TimeRange]
+
+
+class SlotResponse(BaseModel):
+    start_time: str
+    end_time: str
+    available: bool
+    price: float | None = None

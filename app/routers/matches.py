@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.core.db import Client, get_db
+from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user
 from app.models.booking import BookingResponse
 from app.models.match import MatchResponse, OpenToCommunityRequest, ParticipantResponse
@@ -15,7 +15,7 @@ def open_to_community(
     booking_id: str,
     req: OpenToCommunityRequest,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> BookingResponse:
     return match_service.open_to_community(db, tenant_id, booking_id, user.uid, req)
 
@@ -24,7 +24,7 @@ def open_to_community(
 def discover_matches(
     sport: str | None = None,
     date: str | None = None,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[MatchResponse]:
     return match_service.discover_matches(db, sport, date)
 
@@ -34,7 +34,7 @@ def join_match(
     tenant_id: str,
     booking_id: str,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> BookingResponse:
     return match_service.join_match(db, tenant_id, booking_id, user.uid)
 
@@ -43,6 +43,6 @@ def join_match(
 def list_participants(
     tenant_id: str,
     booking_id: str,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[ParticipantResponse]:
     return match_service.list_participants(db, tenant_id, booking_id)

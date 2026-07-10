@@ -1,0 +1,32 @@
+export const queryKeys = {
+  venues: (params?: { city?: string; sport?: string }) => ["venues", params ?? {}] as const,
+  venue: (tenantId: string) => ["venue", tenantId] as const,
+  courts: (tenantId: string) => ["courts", tenantId] as const,
+  slots: (tenantId: string, courtId: string, date: string) => ["slots", tenantId, courtId, date] as const,
+  myBookings: () => ["myBookings"] as const,
+  wallet: () => ["wallet"] as const,
+  walletTransactions: () => ["walletTransactions"] as const,
+  engagement: (uid: string) => ["engagement", uid] as const,
+  openMatches: (params?: { sport?: string; date?: string }) => ["openMatches", params ?? {}] as const,
+  matchParticipants: (tenantId: string, bookingId: string) =>
+    ["matchParticipants", tenantId, bookingId] as const,
+  matchRequests: (tenantId: string, params: { courtId: string; date: string }) =>
+    ["matchRequests", tenantId, params] as const,
+  staff: (tenantId: string) => ["staff", tenantId] as const,
+  venueOverview: (tenantId: string, scope: string) => ["venueOverview", tenantId, scope] as const,
+  venueBookings: (tenantId: string, date?: string) => ["venueBookings", tenantId, date ?? ""] as const,
+  teams: (sport?: string) => ["teams", sport ?? ""] as const,
+  myTeams: () => ["myTeams"] as const,
+  team: (teamId: string) => ["team", teamId] as const,
+  teamChallenges: (teamId: string) => ["teamChallenges", teamId] as const,
+  opponentChallenges: (params?: { sport?: string; date?: string }) =>
+    ["opponentChallenges", params ?? {}] as const,
+  myRewardHistory: () => ["myRewardHistory"] as const,
+  myCaptainStats: () => ["myCaptainStats"] as const,
+  leaderboard: (kind: string) => ["leaderboard", kind] as const,
+  myReferrals: () => ["myReferrals"] as const,
+  myReferralEarnings: () => ["myReferralEarnings"] as const,
+  myWaitlistPosition: (bookingId: string) => ["myWaitlistPosition", bookingId] as const,
+  notifications: (unreadOnly?: boolean) => ["notifications", unreadOnly ?? false] as const,
+  notificationPreferences: () => ["notificationPreferences"] as const,
+};

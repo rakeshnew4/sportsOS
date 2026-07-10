@@ -1,20 +1,21 @@
-"""True "Join Match" — PUBG-style matchmaking, distinct from Hybrid Booking
-(match_service.py). No captain, no pre-existing booking: players individually
-queue for a specific open court slot, and once enough of them (per-sport
-MIN_PLAYERS) are queued for the exact same slot, the system itself forms a
-real booking, splits the cost, and debits each matched player's wallet.
+"""True "Join Match" — PUBG-style matchmaking.
+
+Players individually queue for a specific open court slot. Once enough of
+them are queued for the same slot, the system forms a real booking, splits
+the cost, and debits each matched player's wallet.
 """
 
 from datetime import datetime, timezone
+import uuid
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
-from app.core.db import Client, FieldFilter, transactional
+from app.db.orm import Booking, BookingParticipant, MatchRequest, Wallet, WalletTransaction
 from app.models.matchmaking import MatchRequestCreate, MatchRequestResponse
-from app.services.booking_service import bookings_ref, slot_overlaps_existing, to_minutes
+from app.services.booking_service import slot_overlaps_existing, to_minutes
 from app.services.court_service import get_court
-from app.services.wallet_service import wallet_doc_ref, wallet_tx_collection
-from app.services import notifications_service
+from app.services import notification_service
 
 MIN_PLAYERS = {
     "badminton": 4,
@@ -32,106 +33,112 @@ def _min_players_for(sport: str) -> int:
     return MIN_PLAYERS.get(sport, DEFAULT_MIN_PLAYERS)
 
 
-def match_requests_ref(db: Client, tenant_id: str):
-    return db.collection("tenants").document(tenant_id).collection("match_requests")
-
-
-def _to_response(tenant_id: str, request_id: str, data: dict, current_count: int) -> MatchRequestResponse:
+def _to_response(mr: MatchRequest, current_count: int) -> MatchRequestResponse:
     return MatchRequestResponse(
-        request_id=request_id,
-        tenant_id=tenant_id,
-        court_id=data["court_id"],
-        sport=data["sport"],
-        date=data["date"],
-        start_time=data["start_time"],
-        end_time=data["end_time"],
-        uid=data["uid"],
-        status=data["status"],
-        min_players=data["min_players"],
+        request_id=mr.request_id,
+        tenant_id=mr.tenant_id,
+        court_id=mr.court_id,
+        sport=mr.sport,
+        date=mr.date,
+        start_time=mr.start_time,
+        end_time=mr.end_time,
+        uid=mr.uid,
+        status=mr.status,
+        min_players=mr.min_players,
         current_count=current_count,
-        matched_booking_id=data.get("matched_booking_id"),
+        matched_booking_id=mr.matched_booking_id,
     )
 
 
-def _waiting_requests_for_slot(db: Client, tenant_id: str, court_id: str, date: str, start_time: str, end_time: str):
-    docs = (
-        match_requests_ref(db, tenant_id)
-        .where(filter=FieldFilter("court_id", "==", court_id))
-        .where(filter=FieldFilter("date", "==", date))
-        .where(filter=FieldFilter("start_time", "==", start_time))
-        .where(filter=FieldFilter("end_time", "==", end_time))
-        .where(filter=FieldFilter("status", "==", "waiting"))
-        .stream()
+def _waiting_requests_for_slot(
+    db: Session, tenant_id: str, court_id: str, date: str, start_time: str, end_time: str
+) -> list[MatchRequest]:
+    return (
+        db.query(MatchRequest)
+        .filter(
+            MatchRequest.tenant_id == tenant_id,
+            MatchRequest.court_id == court_id,
+            MatchRequest.date == date,
+            MatchRequest.start_time == start_time,
+            MatchRequest.end_time == end_time,
+            MatchRequest.status == "waiting",
+        )
+        .order_by(MatchRequest.created_at)
+        .all()
     )
-    return sorted(docs, key=lambda d: d.to_dict()["created_at"])
 
 
-@transactional
-def _form_match_txn(transaction, request_refs, booking_ref, wallet_refs, tx_refs, court_id, sport, date, start_time, end_time, price, team_id) -> str | None:
-    request_snaps = [ref.get(transaction=transaction) for ref in request_refs]
-    if not all(s.exists and s.to_dict()["status"] == "waiting" for s in request_snaps):
-        return None  # a concurrent call already matched or cancelled one of these
+def _form_match(
+    db: Session,
+    waiting: list[MatchRequest],
+    tenant_id: str,
+    court_id: str,
+    sport: str,
+    date: str,
+    start_time: str,
+    end_time: str,
+    price: float,
+    team_id: str,
+) -> str | None:
+    # Verify all still waiting and have enough balance
+    share = round(price / len(waiting), 2)
+    for mr in waiting:
+        db.refresh(mr)
+        if mr.status != "waiting":
+            return None
+        wallet = db.query(Wallet).filter(Wallet.uid == mr.uid).with_for_update().first()
+        if not wallet or wallet.balance < share:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="One of the matched players doesn't have enough wallet balance",
+            )
 
-    wallet_snaps = [ref.get(transaction=transaction) for ref in wallet_refs]
-    if not all(s.exists for s in wallet_snaps):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="All matched players must have a wallet (register as a player) to be matched",
-        )
+    now = datetime.now(timezone.utc)
+    booking_id = uuid.uuid4().hex
+    first_uid = waiting[0].uid
 
-    count = len(request_refs)
-    share = round(price / count, 2)
-    if any(snap.to_dict()["balance"] < share for snap in wallet_snaps):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="One of the matched players doesn't have enough wallet balance for their share",
-        )
+    booking = Booking(
+        booking_id=booking_id,
+        tenant_id=tenant_id,
+        court_id=court_id,
+        sport=sport,
+        date=date,
+        start_time=start_time,
+        end_time=end_time,
+        price=price,
+        status="confirmed",
+        created_by=first_uid,
+        team_id=team_id,
+        is_joinable=False,
+        slots_total=len(waiting),
+        slots_open=0,
+        created_at=now,
+    )
+    db.add(booking)
 
-    now = datetime.now(timezone.utc).isoformat()
-    first_uid = request_snaps[0].to_dict()["uid"]
+    for mr in waiting:
+        wallet = db.query(Wallet).filter(Wallet.uid == mr.uid).with_for_update().first()
+        new_balance = wallet.balance - share
+        wallet.balance = new_balance
+        db.add(WalletTransaction(
+            tx_id=uuid.uuid4().hex,
+            uid=mr.uid,
+            type="debit",
+            amount=share,
+            currency=wallet.currency,
+            reason="Matched into a Join Match game",
+            related_booking_id=booking_id,
+            balance_after=new_balance,
+            created_at=now,
+        ))
+        db.add(BookingParticipant(booking_id=booking_id, uid=mr.uid, joined_at=now))
+        mr.status = "matched"
+        mr.matched_booking_id = booking_id
 
-    booking_data = {
-        "court_id": court_id,
-        "sport": sport,
-        "date": date,
-        "start_time": start_time,
-        "end_time": end_time,
-        "price": price,
-        "status": "confirmed",
-        "created_by": first_uid,
-        "team_id": team_id,
-        "team_name": None,
-        "is_joinable": False,
-        "slots_total": count,
-        "slots_open": 0,
-        "tenant_name": None,
-        "geo": None,
-        "created_at": now,
-    }
-    transaction.set(booking_ref, booking_data)
-
-    for req_ref, req_snap, wallet_ref, wallet_snap, tx_ref in zip(request_refs, request_snaps, wallet_refs, wallet_snaps, tx_refs):
-        uid = req_snap.to_dict()["uid"]
-        new_balance = wallet_snap.to_dict()["balance"] - share
-        transaction.update(wallet_ref, {"balance": new_balance})
-        transaction.set(
-            tx_ref,
-            {
-                "type": "debit",
-                "amount": share,
-                "reason": "Matched into a Join Match game",
-                "related_booking_id": booking_ref.id,
-                "balance_after": new_balance,
-                "created_at": now,
-            },
-        )
-        transaction.set(booking_ref.collection("participants").document(uid), {"joined_at": now})
-        transaction.update(req_ref, {"status": "matched", "matched_booking_id": booking_ref.id})
-
-    return booking_ref.id
+    return booking_id
 
 
-def create_match_request(db: Client, tenant_id: str, uid: str, req: MatchRequestCreate) -> MatchRequestResponse:
+def create_match_request(db: Session, tenant_id: str, uid: str, req: MatchRequestCreate) -> MatchRequestResponse:
     court = get_court(db, tenant_id, req.court_id)
     if not court.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Court is not active")
@@ -140,32 +147,31 @@ def create_match_request(db: Client, tenant_id: str, uid: str, req: MatchRequest
     if end_min <= start_min:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_time must be after start_time")
     if start_min < to_minutes(court.open_time) or end_min > to_minutes(court.close_time):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Requested time is outside court operating hours"
-        )
-
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Requested time is outside court operating hours")
     if slot_overlaps_existing(db, tenant_id, req.court_id, req.date, req.start_time, req.end_time):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This slot is already booked")
 
-    already_waiting = _waiting_requests_for_slot(db, tenant_id, req.court_id, req.date, req.start_time, req.end_time)
-    if any(d.to_dict()["uid"] == uid for d in already_waiting):
+    waiting_now = _waiting_requests_for_slot(db, tenant_id, req.court_id, req.date, req.start_time, req.end_time)
+    if any(mr.uid == uid for mr in waiting_now):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You're already queued for this slot")
 
     min_players = _min_players_for(court.sport)
-    request_ref = match_requests_ref(db, tenant_id).document()
-    data = {
-        "court_id": req.court_id,
-        "sport": court.sport,
-        "date": req.date,
-        "start_time": req.start_time,
-        "end_time": req.end_time,
-        "uid": uid,
-        "status": "waiting",
-        "min_players": min_players,
-        "matched_booking_id": None,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    request_ref.set(data)
+    mr = MatchRequest(
+        request_id=uuid.uuid4().hex,
+        tenant_id=tenant_id,
+        court_id=req.court_id,
+        sport=court.sport,
+        date=req.date,
+        start_time=req.start_time,
+        end_time=req.end_time,
+        uid=uid,
+        status="waiting",
+        min_players=min_players,
+        matched_booking_id=None,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(mr)
+    db.flush()
 
     waiting = _waiting_requests_for_slot(db, tenant_id, req.court_id, req.date, req.start_time, req.end_time)
     count_for_response = len(waiting)
@@ -173,93 +179,74 @@ def create_match_request(db: Client, tenant_id: str, uid: str, req: MatchRequest
     if len(waiting) >= min_players:
         duration_hours = (end_min - start_min) / 60
         price = round(court.hourly_price * duration_hours, 2)
-        request_refs = [d.reference for d in waiting]
-        wallet_refs = [wallet_doc_ref(db, d.to_dict()["uid"]) for d in waiting]
-        tx_refs = [wallet_tx_collection(db, d.to_dict()["uid"]).document() for d in waiting]
-        booking_ref = bookings_ref(db, tenant_id).document()
 
-        # Create a team for the matched players
-        from app.services.team_service import create_team
-        first_uid = waiting[0].to_dict()["uid"]
+        from app.services.team_service import create_team, add_team_member
+        first_uid = waiting[0].uid
         team = create_team(db, first_uid, court.sport, f"{court.sport.title()} Queue Match")
-
-        # Add all matched players to the team
-        from app.services.team_service import add_team_member
-        for doc in waiting[1:]:
-            uid = doc.to_dict()["uid"]
+        for w in waiting[1:]:
             try:
-                add_team_member(db, team.team_id, uid)
+                add_team_member(db, team.team_id, w.uid)
             except HTTPException:
                 pass
 
-        formed_booking_id = _form_match_txn(
-            db.transaction(),
-            request_refs,
-            booking_ref,
-            wallet_refs,
-            tx_refs,
-            req.court_id,
-            court.sport,
-            req.date,
-            req.start_time,
-            req.end_time,
-            price,
-            team.team_id,
+        formed_booking_id = _form_match(
+            db, waiting, tenant_id, req.court_id, court.sport,
+            req.date, req.start_time, req.end_time, price, team.team_id,
         )
-        if formed_booking_id is not None:
-            # Send notifications to all matched players
-            matched_uids = [d.to_dict()["uid"] for d in waiting]
+        if formed_booking_id:
             try:
-                # Get venue name for notification
-                venue_doc = db.collection("tenants").document(tenant_id).get()
-                venue_name = venue_doc.to_dict().get("name", tenant_id) if venue_doc.exists else tenant_id
-                notifications_service.notify_match_formed(
-                    db, formed_booking_id, matched_uids, venue_name, court.sport, f"{req.start_time}–{req.end_time}"
+                from app.services.venue_service import get_venue
+                venue = get_venue(db, tenant_id)
+                notification_service.notify_match_formed(
+                    db, formed_booking_id,
+                    [w.uid for w in waiting],
+                    venue.name, court.sport,
+                    f"{req.start_time}–{req.end_time}",
                 )
             except Exception:
-                pass  # Notification failure shouldn't block match formation
-        else:
-            count_for_response = len(
-                _waiting_requests_for_slot(db, tenant_id, req.court_id, req.date, req.start_time, req.end_time)
-            )
+                pass
 
-    final_doc = request_ref.get().to_dict()
-    return _to_response(tenant_id, request_ref.id, final_doc, count_for_response)
+    db.commit()
+    db.refresh(mr)
+    return _to_response(mr, count_for_response)
 
 
-def list_match_requests(db: Client, tenant_id: str, court_id: str, date: str) -> list[MatchRequestResponse]:
-    docs = list(
-        match_requests_ref(db, tenant_id)
-        .where(filter=FieldFilter("court_id", "==", court_id))
-        .where(filter=FieldFilter("date", "==", date))
-        .stream()
+def list_match_requests(db: Session, tenant_id: str, court_id: str, date: str) -> list[MatchRequestResponse]:
+    mrs = (
+        db.query(MatchRequest)
+        .filter(
+            MatchRequest.tenant_id == tenant_id,
+            MatchRequest.court_id == court_id,
+            MatchRequest.date == date,
+        )
+        .all()
     )
     waiting_counts: dict[tuple[str, str], int] = {}
-    for doc in docs:
-        data = doc.to_dict()
-        if data["status"] == "waiting":
-            key = (data["start_time"], data["end_time"])
+    for mr in mrs:
+        if mr.status == "waiting":
+            key = (mr.start_time, mr.end_time)
             waiting_counts[key] = waiting_counts.get(key, 0) + 1
 
     results = []
-    for doc in docs:
-        data = doc.to_dict()
-        key = (data["start_time"], data["end_time"])
-        current = waiting_counts.get(key, 0) if data["status"] == "waiting" else data["min_players"]
-        results.append(_to_response(tenant_id, doc.id, data, current))
+    for mr in mrs:
+        key = (mr.start_time, mr.end_time)
+        current = waiting_counts.get(key, 0) if mr.status == "waiting" else mr.min_players
+        results.append(_to_response(mr, current))
     return results
 
 
-def cancel_match_request(db: Client, tenant_id: str, request_id: str, uid: str) -> MatchRequestResponse:
-    ref = match_requests_ref(db, tenant_id).document(request_id)
-    doc = ref.get()
-    if not doc.exists:
+def cancel_match_request(db: Session, tenant_id: str, request_id: str, uid: str) -> MatchRequestResponse:
+    mr = (
+        db.query(MatchRequest)
+        .filter(MatchRequest.request_id == request_id, MatchRequest.tenant_id == tenant_id)
+        .first()
+    )
+    if not mr:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match request not found")
-    data = doc.to_dict()
-    if data["uid"] != uid:
+    if mr.uid != uid:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your match request")
-    if data["status"] != "waiting":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Request already {data['status']}")
-    ref.update({"status": "cancelled"})
-    data["status"] = "cancelled"
-    return _to_response(tenant_id, request_id, data, 0)
+    if mr.status != "waiting":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Request already {mr.status}")
+    mr.status = "cancelled"
+    db.commit()
+    return _to_response(mr, 0)

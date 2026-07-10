@@ -3,16 +3,17 @@
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.core.db import Client, get_db
+from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user
+from app.db.orm import User
 from app.models.team import TeamMember
 
 router = APIRouter(prefix="/teams", tags=["teams"])
 
 
-def _display_name(db: Client, uid: str) -> str:
-    doc = db.collection("users").document(uid).get()
-    return doc.to_dict().get("display_name", uid) if doc.exists else uid
+def _display_name(db: Session, uid: str) -> str:
+    user = db.query(User).filter(User.uid == uid).first()
+    return user.display_name if user and user.display_name else uid
 
 
 class TeamResponse(BaseModel):
@@ -72,7 +73,7 @@ class TeamOpponentResponse(BaseModel):
 
 # Team Management
 
-def _to_team_response(db: Client, team) -> TeamResponse:
+def _to_team_response(db: Session, team) -> "TeamResponse":
     stats = team.stats
     return TeamResponse(
         team_id=team.team_id,
@@ -95,7 +96,7 @@ def _to_team_response(db: Client, team) -> TeamResponse:
 @router.get("")
 def list_teams(
     sport: str | None = None,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[TeamResponse]:
     """List all active teams, optionally filtered by sport."""
     from app.services import team_service
@@ -106,7 +107,7 @@ def list_teams(
 @router.get("/me")
 def list_my_teams(
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[TeamResponse]:
     """List teams the current player is in."""
     from app.services import team_service
@@ -118,7 +119,7 @@ def list_my_teams(
 def discover_opponent_challenges(
     sport: str | None = None,
     date: str | None = None,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[TeamOpponentResponse]:
     """Discover opponent challenges from other teams (for team discovery)."""
     from app.services import team_service
@@ -129,7 +130,7 @@ def discover_opponent_challenges(
 @router.get("/{team_id}")
 def get_team(
     team_id: str,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> TeamResponse:
     """Get team details including members and stats."""
     from app.services import team_service
@@ -143,11 +144,12 @@ def get_team(
 def create_team(
     req: TeamCreateRequest,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> TeamResponse:
     """Create a new team (user becomes captain)."""
     from app.services import team_service
     team = team_service.create_team(db, user.uid, req.sport, req.team_name)
+    db.commit()
     return _to_team_response(db, team)
 
 
@@ -156,7 +158,7 @@ def update_team(
     team_id: str,
     req: TeamCreateRequest,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> TeamResponse:
     """Update team info (captain only)."""
     from app.services import team_service
@@ -172,7 +174,7 @@ def update_team(
 @router.get("/{team_id}/members")
 def list_team_members(
     team_id: str,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[TeamMember]:
     """Get all members of a team."""
     from app.services import team_service
@@ -187,7 +189,7 @@ def invite_player_to_team(
     team_id: str,
     req: TeamInviteRequest,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> TeamMember:
     """Invite a player to join the team (captain only)."""
     from app.services import team_service
@@ -195,6 +197,7 @@ def invite_player_to_team(
     if not team or team.captain_uid != user.uid:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only captain can invite players")
     updated_team = team_service.add_team_member(db, team_id, req.player_uid, req.player_name)
+    db.commit()
     return next(m for m in updated_team.members if m.uid == req.player_uid)
 
 
@@ -203,7 +206,7 @@ def remove_player_from_team(
     team_id: str,
     player_uid: str,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Remove a player from team (captain only or self-remove)."""
     from app.services import team_service
@@ -213,6 +216,7 @@ def remove_player_from_team(
     if team.captain_uid != user.uid and player_uid != user.uid:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     team_service.remove_team_member(db, team_id, player_uid)
+    db.commit()
     return {"success": True, "message": f"Player {player_uid} removed from team"}
 
 
@@ -223,7 +227,7 @@ def create_opponent_challenge(
     team_id: str,
     req: TeamOpponentRequest,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> TeamOpponentResponse:
     """Create a 'looking for opponent' challenge (captain only)."""
     from app.services import team_service
@@ -235,13 +239,14 @@ def create_opponent_challenge(
         db, team_id, user.uid, req.sport, req.date, req.time,
         req.venue_id, req.skill_level, req.match_format, req.number_of_players
     )
+    db.commit()
     return TeamOpponentResponse(**challenge, from_captain_name=_display_name(db, challenge["from_captain_uid"]))
 
 
 @router.get("/{team_id}/challenges")
 def list_team_challenges(
     team_id: str,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[TeamOpponentResponse]:
     """List opponent challenges from this team."""
     from app.services import team_service
@@ -258,7 +263,7 @@ def accept_opponent_challenge(
     team_id: str,
     challenge_id: str,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Accept an opponent challenge (creates match booking for both teams)."""
     from app.services import team_service
@@ -267,6 +272,7 @@ def accept_opponent_challenge(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only captain can accept challenges")
 
     result = team_service.accept_opponent_challenge(db, challenge_id, team_id, user.uid)
+    db.commit()
     return {
         "success": True,
         "message": "Challenge accepted",
@@ -280,7 +286,7 @@ def reject_opponent_challenge(
     team_id: str,
     challenge_id: str,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Reject an opponent challenge."""
     from app.services import team_service
@@ -289,6 +295,7 @@ def reject_opponent_challenge(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
     team_service.reject_opponent_challenge(db, challenge_id)
+    db.commit()
     return {"success": True, "message": "Challenge rejected"}
 
 
@@ -297,7 +304,7 @@ def reject_opponent_challenge(
 @router.get("/{team_id}/stats")
 def get_team_stats(
     team_id: str,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Get team statistics (wins, losses, rating)."""
     from app.services import team_service
@@ -318,7 +325,7 @@ def get_team_stats(
 def get_team_history(
     team_id: str,
     limit: int = 10,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Get team's match history (last N matches)."""
     from app.services import team_service

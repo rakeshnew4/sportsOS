@@ -1,0 +1,30 @@
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE } from "@/lib/session";
+
+const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
+
+export async function POST(req: NextRequest) {
+  const { phone } = await req.json();
+
+  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    return NextResponse.json(data, { status: res.status });
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, data.uid, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    secure: process.env.NODE_ENV === "production",
+  });
+
+  return NextResponse.json(data);
+}

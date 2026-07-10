@@ -3,8 +3,9 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.core.db import Client, FieldFilter, get_db
+from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user
+from app.db.orm import BookingParticipant, Tenant
 from app.services import booking_service
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -43,44 +44,25 @@ class SportActivityTrend(BaseModel):
 def get_my_match_history(
     limit: int = 20,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[MatchHistory]:
-    """Get history of all matches/bookings for current player."""
     my_bookings = booking_service.list_my_bookings(db, user.uid)
-
     results = []
     for booking in my_bookings:
         if booking.status != "confirmed":
             continue
-
-        # Get venue name
-        venue_doc = db.collection("tenants").document(booking.tenant_id).get()
-        venue_name = venue_doc.to_dict().get("name", booking.tenant_id) if venue_doc.exists else booking.tenant_id
-
-        # Calculate price paid by this player (captain + joiners split the total)
-        participants_ref = (
-            db.collection("tenants").document(booking.tenant_id)
-            .collection("bookings").document(booking.booking_id)
-            .collection("participants")
-        )
-        participant_count = 1 + len(list(participants_ref.stream()))
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == booking.tenant_id).first()
+        venue_name = tenant.name if tenant else booking.tenant_id
+        participant_count = 1 + db.query(BookingParticipant).filter(
+            BookingParticipant.booking_id == booking.booking_id
+        ).count()
         price_per_person = booking.price / participant_count
-
-        results.append(
-            MatchHistory(
-                booking_id=booking.booking_id,
-                date=booking.date,
-                sport=booking.sport,
-                start_time=booking.start_time,
-                end_time=booking.end_time,
-                venue_name=venue_name,
-                participants_count=participant_count,
-                price_paid=round(price_per_person, 2),
-                status=booking.status,
-            )
-        )
-
-    # Sort by date descending
+        results.append(MatchHistory(
+            booking_id=booking.booking_id, date=booking.date, sport=booking.sport,
+            start_time=booking.start_time, end_time=booking.end_time,
+            venue_name=venue_name, participants_count=participant_count,
+            price_paid=round(price_per_person, 2), status=booking.status,
+        ))
     results.sort(key=lambda m: m.date, reverse=True)
     return results[:limit]
 
@@ -88,44 +70,34 @@ def get_my_match_history(
 @router.get("/players/me/stats")
 def get_my_match_stats(
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> MatchStats:
-    """Get aggregated match statistics for current player."""
     from app.models.kpi import PlayerKPIScope
     from app.services import kpi_service
 
-    # Get all-time stats
     all_time = kpi_service.get_player_engagement_kpi(db, user.uid, PlayerKPIScope.ALL_TIME)
     month = kpi_service.get_player_engagement_kpi(db, user.uid, PlayerKPIScope.MONTH)
-    week = kpi_service.get_player_engagement_kpi(db, user.uid, PlayerKPIScope.QUARTER)  # Using QUARTER as proxy for week
-
+    week = kpi_service.get_player_engagement_kpi(db, user.uid, PlayerKPIScope.QUARTER)
     my_bookings = booking_service.list_my_bookings(db, user.uid)
-    confirmed_bookings = [b for b in my_bookings if b.status == "confirmed"]
+    confirmed = [b for b in my_bookings if b.status == "confirmed"]
 
-    # Calculate favorite day of week
-    day_counts = {}
-    for booking in confirmed_bookings:
+    day_counts: dict[str, int] = {}
+    for b in confirmed:
         try:
-            bdate = datetime.fromisoformat(booking.date)
-            day_name = bdate.strftime("%A")
-            day_counts[day_name] = day_counts.get(day_name, 0) + 1
+            bdate = datetime.fromisoformat(b.date)
+            day = bdate.strftime("%A")
+            day_counts[day] = day_counts.get(day, 0) + 1
         except (ValueError, TypeError):
             pass
+    favorite_day = max(day_counts, key=lambda d: day_counts[d]) if day_counts else None
 
-    favorite_day = max(day_counts.keys(), key=lambda d: day_counts[d]) if day_counts else None
-
-    # Calculate avg participants
     avg_participants = 0.0
-    if confirmed_bookings:
-        total_participants = 0
-        for b in confirmed_bookings:
-            participants_ref = (
-                db.collection("tenants").document(b.tenant_id)
-                .collection("bookings").document(b.booking_id)
-                .collection("participants")
-            )
-            total_participants += 1 + len(list(participants_ref.stream()))
-        avg_participants = total_participants / len(confirmed_bookings)
+    if confirmed:
+        total = sum(
+            1 + db.query(BookingParticipant).filter(BookingParticipant.booking_id == b.booking_id).count()
+            for b in confirmed
+        )
+        avg_participants = total / len(confirmed)
 
     return MatchStats(
         total_matches=all_time.matches_played,
@@ -141,86 +113,54 @@ def get_my_match_stats(
 def get_venue_sport_trends(
     tenant_id: str,
     weeks: int = 4,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[SportActivityTrend]:
-    """Get sport-wise activity trends for a venue over past N weeks."""
-    from app.services import court_service
-
     bookings = booking_service.list_bookings(db, tenant_id)
-
-    # Group by week and sport
     now = datetime.now()
-    trends_by_week_sport = {}
-
-    for booking in bookings:
-        if booking.status != "confirmed":
+    trends: dict[tuple[str, str], dict] = {}
+    for b in bookings:
+        if b.status != "confirmed":
             continue
-
         try:
-            bdate = datetime.fromisoformat(booking.date)
+            bdate = datetime.fromisoformat(b.date)
         except (ValueError, TypeError):
             continue
-
-        # Only include past N weeks
         if (now - bdate).days > weeks * 7:
             continue
-
-        # Calculate week starting date (Monday)
-        week_start = bdate - timedelta(days=bdate.weekday())
-        week_key = week_start.date().isoformat()
-
-        sport = booking.sport
-        key = (week_key, sport)
-
-        if key not in trends_by_week_sport:
-            trends_by_week_sport[key] = {"matches": 0, "hours": 0.0, "revenue": 0.0}
-
-        trends_by_week_sport[key]["matches"] += 1
-
-        # Calculate hours played
+        week_start = (bdate - timedelta(days=bdate.weekday())).date().isoformat()
+        key = (week_start, b.sport)
+        if key not in trends:
+            trends[key] = {"matches": 0, "hours": 0.0, "revenue": 0.0}
+        trends[key]["matches"] += 1
         try:
-            start_h, start_m = map(int, booking.start_time.split(":"))
-            end_h, end_m = map(int, booking.end_time.split(":"))
-            duration_hours = (end_h + end_m / 60) - (start_h + start_m / 60)
-            trends_by_week_sport[key]["hours"] += duration_hours
+            sh, sm = map(int, b.start_time.split(":"))
+            eh, em = map(int, b.end_time.split(":"))
+            trends[key]["hours"] += (eh + em / 60) - (sh + sm / 60)
         except (ValueError, AttributeError):
             pass
-
-        trends_by_week_sport[key]["revenue"] += booking.price
-
-    # Convert to response format
-    results = []
-    for (week_key, sport), data in sorted(trends_by_week_sport.items()):
-        results.append(
-            SportActivityTrend(
-                sport=sport,
-                week_starting=week_key,
-                matches_count=data["matches"],
-                hours_played=round(data["hours"], 1),
-                total_revenue=round(data["revenue"], 2),
-            )
-        )
-
-    return results
+        trends[key]["revenue"] += b.price
+    return [
+        SportActivityTrend(sport=sport, week_starting=week, matches_count=d["matches"],
+                           hours_played=round(d["hours"], 1), total_revenue=round(d["revenue"], 2))
+        for (week, sport), d in sorted(trends.items())
+    ]
 
 
 @router.get("/venues/{tenant_id}/peak-hours")
 def get_venue_peak_hours(
     tenant_id: str,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict[str, int]:
-    """Identify peak booking hours at a venue (heatmap data for owners)."""
     bookings = booking_service.list_bookings(db, tenant_id)
-
-    hour_counts = {}
-    for booking in bookings:
-        if booking.status != "confirmed":
+    hour_counts: dict[str, int] = {}
+    for b in bookings:
+        if b.status != "confirmed":
             continue
-
         try:
-            start_h = int(booking.start_time.split(":")[0])
+            start_h = int(b.start_time.split(":")[0])
             hour_counts[f"{start_h:02d}:00"] = hour_counts.get(f"{start_h:02d}:00", 0) + 1
         except (ValueError, IndexError):
             pass
-
     return hour_counts
+
+

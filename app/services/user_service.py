@@ -1,66 +1,91 @@
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
-from app.core.db import Client
-
+from app.db.orm import User, UserRole, Wallet
 from app.models.user import MeResponse, OwnerRegisterRequest, PlayerRegisterRequest
 
 
-def register_player(db: Client, uid: str, req: PlayerRegisterRequest) -> None:
-    _create_user_doc(db, uid, req.display_name, req.phone, is_player=True)
-    player_ref = db.collection("players").document(uid)
-    player_ref.set(
-        {
-            "display_name": req.display_name,
-            "phone": req.phone,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-    )
-    player_ref.collection("wallet").document("wallet").set({"balance": 0})
+def register_player(db: Session, req: PlayerRegisterRequest, uid: str | None = None) -> MeResponse:
+    uid = uid or uuid.uuid4().hex
+    _create_user_row(db, uid, req.display_name, req.phone, is_player=True)
+    db.add(Wallet(uid=uid, balance=0.0, currency="INR"))
+    db.commit()
+    return get_me(db, uid)
 
 
-def register_owner(db: Client, uid: str, req: OwnerRegisterRequest) -> None:
-    _create_user_doc(db, uid, req.display_name, req.phone, is_player=False)
+def register_owner(db: Session, req: OwnerRegisterRequest, uid: str | None = None) -> MeResponse:
+    uid = uid or uuid.uuid4().hex
+    _create_user_row(db, uid, req.display_name, req.phone, is_player=False)
+    db.commit()
+    return get_me(db, uid)
 
 
-def _create_user_doc(db: Client, uid: str, display_name: str, phone: str, is_player: bool) -> None:
-    user_ref = db.collection("users").document(uid)
-    if user_ref.get().exists:
+def find_uid_by_phone(db: Session, phone: str) -> str | None:
+    user = db.query(User).filter(User.phone == phone).first()
+    return user.uid if user else None
+
+
+def login(db: Session, phone: str) -> MeResponse:
+    uid = find_uid_by_phone(db, phone)
+    if uid is None:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="User already registered"
+            status_code=status.HTTP_404_NOT_FOUND, detail="No account with this phone number"
         )
-    user_ref.set(
-        {
-            "display_name": display_name,
-            "phone": phone,
-            "roles": {"player": is_player, "owner": [], "staff": []},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-    )
+    return get_me(db, uid)
 
 
-def get_me(db: Client, uid: str) -> MeResponse:
-    user_doc = db.collection("users").document(uid).get()
-    if not user_doc.exists:
+def _create_user_row(db: Session, uid: str, display_name: str, phone: str, is_player: bool) -> None:
+    if db.query(User).filter(User.uid == uid).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already registered")
+    if db.query(User).filter(User.phone == phone).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Phone number already registered")
+    db.add(User(
+        uid=uid,
+        display_name=display_name,
+        phone=phone,
+        is_player=is_player,
+        created_at=datetime.now(timezone.utc),
+    ))
+
+
+def get_me(db: Session, uid: str) -> MeResponse:
+    user = db.query(User).filter(User.uid == uid).first()
+    if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not registered")
-    data = user_doc.to_dict()
-    roles = data.get("roles", {})
+    roles = db.query(UserRole).filter(UserRole.uid == uid).all()
+    owner_of = [r.tenant_id for r in roles if r.role_type == "owner"]
+    staff_of = [r.tenant_id for r in roles if r.role_type == "staff"]
     return MeResponse(
         uid=uid,
-        display_name=data.get("display_name"),
-        is_player=bool(roles.get("player")),
-        owner_of=list(roles.get("owner", [])),
-        staff_of=list(roles.get("staff", [])),
+        display_name=user.display_name,
+        is_player=user.is_player,
+        owner_of=owner_of,
+        staff_of=staff_of,
     )
 
 
-def grant_owner_role(db: Client, uid: str, tenant_id: str) -> None:
-    user_ref = db.collection("users").document(uid)
-    user_doc = user_ref.get()
-    if not user_doc.exists:
+def grant_owner_role(db: Session, uid: str, tenant_id: str) -> None:
+    if not db.query(User).filter(User.uid == uid).first():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not registered")
-    roles = user_doc.to_dict().get("roles", {})
-    owner_of = set(roles.get("owner", []))
-    owner_of.add(tenant_id)
-    user_ref.update({"roles.owner": list(owner_of)})
+    existing = (
+        db.query(UserRole)
+        .filter(UserRole.uid == uid, UserRole.role_type == "owner", UserRole.tenant_id == tenant_id)
+        .first()
+    )
+    if not existing:
+        db.add(UserRole(uid=uid, role_type="owner", tenant_id=tenant_id))
+
+
+def grant_staff_role(db: Session, uid: str, tenant_id: str) -> None:
+    if not db.query(User).filter(User.uid == uid).first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not registered")
+    existing = (
+        db.query(UserRole)
+        .filter(UserRole.uid == uid, UserRole.role_type == "staff", UserRole.tenant_id == tenant_id)
+        .first()
+    )
+    if not existing:
+        db.add(UserRole(uid=uid, role_type="staff", tenant_id=tenant_id))

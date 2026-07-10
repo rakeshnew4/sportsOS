@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.core.db import Client, get_db
+from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user, require_venue_access
 from app.services import waitlist_service
 
@@ -49,7 +49,7 @@ def join_waitlist(
     tenant_id: str,
     booking_id: str,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> JoinWaitlistResponse:
     """Join waitlist for a full match."""
     result = waitlist_service.join_waitlist(db, tenant_id, booking_id, user.uid)
@@ -61,7 +61,7 @@ def get_waitlist(
     tenant_id: str,
     booking_id: str,
     user: CurrentUser = Depends(require_venue_access),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> WaitlistResponse:
     """Get waitlist for a booking (venue/staff only)."""
     result = waitlist_service.get_waitlist(db, tenant_id, booking_id)
@@ -72,7 +72,7 @@ def get_waitlist(
 def get_my_waitlist_position(
     booking_id: str,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> MyWaitlistPosition:
     """Get my position on waitlist for a booking."""
     tenant_id = waitlist_service.get_tenant_id_from_booking(db, booking_id)
@@ -88,7 +88,7 @@ def get_my_waitlist_position(
 def confirm_promotion(
     booking_id: str,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Confirm promotion from waitlist (30-min window)."""
     tenant_id = waitlist_service.get_tenant_id_from_booking(db, booking_id)
@@ -105,7 +105,7 @@ def confirm_promotion(
 def decline_promotion(
     booking_id: str,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Decline promotion, promote next player in queue."""
     tenant_id = waitlist_service.get_tenant_id_from_booking(db, booking_id)
@@ -122,7 +122,7 @@ def decline_promotion(
 def leave_waitlist(
     booking_id: str,
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Leave waitlist for a booking."""
     tenant_id = waitlist_service.get_tenant_id_from_booking(db, booking_id)
@@ -142,7 +142,7 @@ def promote_next_from_waitlist(
     tenant_id: str,
     booking_id: str,
     user: CurrentUser = Depends(require_venue_access),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Manually promote next player from waitlist (venue staff only)."""
     result = waitlist_service.promote_from_waitlist(db, tenant_id, booking_id)

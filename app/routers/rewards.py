@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import date
 
-from app.core.db import Client, get_db
+from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user
 
 router = APIRouter(prefix="/rewards", tags=["rewards"])
@@ -65,7 +65,7 @@ class ReferralTracking(BaseModel):
 @router.get("/me/history")
 def get_my_rewards(
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[RewardRecord]:
     """Get all rewards earned by current player."""
     from app.services import rewards_service
@@ -76,7 +76,7 @@ def get_my_rewards(
 @router.get("/me/captain")
 def get_my_captain_stats(
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> CaptainStatsResponse:
     """Get detailed captain statistics for current player."""
     from app.services import rewards_service
@@ -89,7 +89,7 @@ def get_my_captain_stats(
 @router.get("/{player_uid}/captain")
 def get_captain_stats(
     player_uid: str,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> CaptainStatsResponse:
     """Get captain statistics for a specific player (public)."""
     from app.services import rewards_service
@@ -104,7 +104,7 @@ def get_captain_stats(
 @router.get("/leaderboard/credits-monthly")
 def leaderboard_credits_monthly(
     limit: int = 10,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[CaptainLeaderboardEntry]:
     """Leaderboard of captains by credits earned this month."""
     from app.services import rewards_service
@@ -123,7 +123,7 @@ def leaderboard_credits_monthly(
 @router.get("/leaderboard/matches-hosted")
 def leaderboard_matches_hosted(
     limit: int = 10,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[CaptainLeaderboardEntry]:
     """Leaderboard of captains by matches hosted this month."""
     from app.services import rewards_service
@@ -142,7 +142,7 @@ def leaderboard_matches_hosted(
 @router.get("/leaderboard/new-players-referred")
 def leaderboard_referrals(
     limit: int = 10,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[CaptainLeaderboardEntry]:
     """Leaderboard of captains by new players they've brought to platform."""
     from app.services import rewards_service
@@ -163,7 +163,7 @@ def leaderboard_referrals(
 @router.get("/me/referrals")
 def get_my_referrals(
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> list[ReferralTracking]:
     """Get all players referred by current captain."""
     from app.services import rewards_service
@@ -174,7 +174,7 @@ def get_my_referrals(
 @router.get("/me/referral-earnings")
 def get_my_referral_earnings(
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Get referral earnings summary."""
     from app.services import rewards_service
@@ -191,7 +191,7 @@ def get_my_referral_earnings(
 @router.post("/me/referrals/create-code")
 def create_referral_code(
     user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Create a referral code for sharing with others."""
     from app.services import rewards_service

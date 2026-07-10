@@ -1,0 +1,16 @@
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+local_data/
+firebase_serviceaccount.json
+*serviceaccount*.json
+.env
+.streamlit/
+node_modules/
+web/.next/
+*.md
+*.log

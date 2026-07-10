@@ -1,19 +1,76 @@
-"""In-app notifications system — short-signature helpers used by matchmaking_service.py
-and the Streamlit demo UI.
+"""In-app notifications — thin compatibility layer over notification_service.py."""
 
-This is a thin compatibility layer over notification_service.py: both modules used to
-write into players/{uid}/notifications with two different, incompatible schemas (one
-used a boolean `read` field, the other a `read_at` timestamp; one had no `notification_id`
-field). That split meant notifications created here were invisible to the FastAPI
-GET /notifications/me endpoint (pydantic validation error on the missing field) and
-notifications created via notification_service (waitlist promotion, rewards, match
-reminders, team challenges) never showed up in the Streamlit notification bell. Routing
-everything through notification_service.record_notification keeps a single schema so
-every producer/consumer stays interoperable.
-"""
-
-from app.core.db import Client
+from sqlalchemy.orm import Session
 from app.services import notification_service
+
+
+def create_notification(
+    db: Session, uid: str, title: str, body: str, notification_type: str, data: dict = None,
+) -> str:
+    record = notification_service.record_notification(db, uid, notification_type, title, body, data, send_push=False)
+    return record["notification_id"]
+
+
+def get_unread_notifications(db: Session, uid: str, limit: int = 10) -> list[dict]:
+    notifications = notification_service.get_player_notifications(db, uid, limit=limit, unread_only=True)
+    return [
+        {
+            "id": n["notification_id"],
+            "title": n["title"],
+            "body": n["body"],
+            "type": n["type"],
+            "data": n.get("data", {}),
+            "created_at": n["created_at"],
+            "read": n.get("read_at") is not None,
+        }
+        for n in notifications
+    ]
+
+
+def mark_as_read(db: Session, uid: str, notification_id: str) -> None:
+    notification_service.mark_notification_read(db, uid, notification_id)
+
+
+PREFERENCE_KEY_MAP = {
+    "Match Needs Players": "match_needs_players",
+    "Waitlist Promotion": "promoted_from_waitlist",
+    "Team Challenges": "team_challenge",
+    "Match Reminders": "match_reminder",
+    "Rewards Earned": "reward_earned",
+}
+
+
+def update_notification_preferences(db: Session, uid: str, preferences: dict) -> dict:
+    mapped = {PREFERENCE_KEY_MAP.get(k, k): v for k, v in preferences.items()}
+    return notification_service.update_notification_preferences(db, uid, mapped)
+
+
+def notify_match_formed(
+    db: Session, booking_id: str, matched_uids: list[str], venue_name: str, sport: str, time_slot: str
+) -> None:
+    for uid in matched_uids:
+        create_notification(
+            db, uid,
+            title="Match formed!",
+            body=f"Your {sport} queue matched! Game at {venue_name} {time_slot}",
+            notification_type="match_formed",
+            data={"booking_id": booking_id, "sport": sport, "venue": venue_name},
+        )
+
+
+def notify_queue_filling(
+    db: Session, queued_uids: list[str], current_count: int, min_count: int, sport: str, time_slot: str
+) -> None:
+    for uid in queued_uids:
+        if current_count < min_count:
+            create_notification(
+                db, uid,
+                title=f"{current_count}/{min_count} players queued",
+                body=f"{sport} match at {time_slot} – invite friends!",
+                notification_type="match_needs_players",
+                data={"current_count": current_count, "min_count": min_count},
+            )
+
 
 
 def create_notification(

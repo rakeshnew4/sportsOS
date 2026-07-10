@@ -47,8 +47,8 @@ def generate_dummy_players(db):
         try:
             user_service.register_player(
                 db,
-                player["uid"],
                 PlayerRegisterRequest(display_name=player["name"], phone=player["phone"]),
+                uid=player["uid"],
             )
             # Create wallet with initial balance
             wallet_ref = db.collection("players").document(player["uid"]).collection("wallet").document("wallet")
@@ -76,8 +76,8 @@ def generate_dummy_owners(db):
         try:
             user_service.register_owner(
                 db,
-                owner["uid"],
                 OwnerRegisterRequest(display_name=owner["name"], phone=owner["phone"]),
+                uid=owner["uid"],
             )
             print(f"  ✅ {owner['name']}")
         except Exception as e:

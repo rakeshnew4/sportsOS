@@ -11,6 +11,10 @@ class OwnerRegisterRequest(BaseModel):
     phone: str
 
 
+class LoginRequest(BaseModel):
+    phone: str
+
+
 class MeResponse(BaseModel):
     uid: str
     display_name: str | None = None

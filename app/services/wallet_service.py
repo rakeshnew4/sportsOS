@@ -1,70 +1,80 @@
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
-from app.core.db import Client, transactional
+from app.db.orm import Wallet, WalletTransaction
 from app.models.wallet import WalletResponse, WalletTransactionResponse
 
 
-def wallet_doc_ref(db: Client, uid: str):
-    return db.collection("players").document(uid).collection("wallet").document("wallet")
-
-
-def wallet_tx_collection(db: Client, uid: str):
-    return db.collection("players").document(uid).collection("wallet_transactions")
-
-
-def get_wallet(db: Client, uid: str) -> WalletResponse:
-    doc = wallet_doc_ref(db, uid).get()
-    if not doc.exists:
+def get_wallet(db: Session, uid: str) -> WalletResponse:
+    wallet = db.query(Wallet).filter(Wallet.uid == uid).first()
+    if not wallet:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wallet not found")
-    data = doc.to_dict()
-    return WalletResponse(
-        uid=uid,
-        balance=data["balance"],
-        currency=data.get("currency", "INR")
+    return WalletResponse(uid=uid, balance=wallet.balance, currency=wallet.currency)
+
+
+def list_transactions(db: Session, uid: str) -> list[WalletTransactionResponse]:
+    txs = (
+        db.query(WalletTransaction)
+        .filter(WalletTransaction.uid == uid)
+        .order_by(WalletTransaction.created_at.desc())
+        .all()
     )
+    return [
+        WalletTransactionResponse(
+            tx_id=tx.tx_id,
+            type=tx.type,
+            amount=tx.amount,
+            currency=tx.currency,
+            reason=tx.reason,
+            related_booking_id=tx.related_booking_id,
+            balance_after=tx.balance_after,
+            created_at=tx.created_at.isoformat(),
+        )
+        for tx in txs
+    ]
 
 
-def list_transactions(db: Client, uid: str) -> list[WalletTransactionResponse]:
-    docs = wallet_tx_collection(db, uid).order_by("created_at", direction="DESCENDING").stream()
-    return [WalletTransactionResponse(tx_id=doc.id, **doc.to_dict()) for doc in docs]
+def credit_wallet(
+    db: Session, uid: str, amount: float, reason: str, related_booking_id: str | None = None
+) -> float:
+    return _apply_ledger_entry(db, uid, amount, "credit", reason, related_booking_id)
 
 
-@transactional
-def _apply_ledger_entry(transaction, wallet_ref, tx_ref, amount: float, tx_type: str, reason: str, related_booking_id: str | None) -> float:
-    snapshot = wallet_ref.get(transaction=transaction)
-    if not snapshot.exists:
+def debit_wallet(
+    db: Session, uid: str, amount: float, reason: str, related_booking_id: str | None = None
+) -> float:
+    return _apply_ledger_entry(db, uid, amount, "debit", reason, related_booking_id)
+
+
+def _apply_ledger_entry(
+    db: Session,
+    uid: str,
+    amount: float,
+    tx_type: str,
+    reason: str,
+    related_booking_id: str | None,
+) -> float:
+    wallet = db.query(Wallet).filter(Wallet.uid == uid).with_for_update().first()
+    if not wallet:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wallet not found")
-    data = snapshot.to_dict()
-    balance = data["balance"]
-    currency = data.get("currency", "INR")
-    if tx_type == "debit" and balance < amount:
+    if tx_type == "debit" and wallet.balance < amount:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient wallet balance")
-    new_balance = balance - amount if tx_type == "debit" else balance + amount
-    transaction.update(wallet_ref, {"balance": new_balance})
-    transaction.set(
-        tx_ref,
-        {
-            "type": tx_type,
-            "amount": amount,
-            "currency": currency,
-            "reason": reason,
-            "related_booking_id": related_booking_id,
-            "balance_after": new_balance,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        },
+    new_balance = wallet.balance - amount if tx_type == "debit" else wallet.balance + amount
+    wallet.balance = new_balance
+    tx = WalletTransaction(
+        tx_id=uuid.uuid4().hex,
+        uid=uid,
+        type=tx_type,
+        amount=amount,
+        currency=wallet.currency,
+        reason=reason,
+        related_booking_id=related_booking_id,
+        balance_after=new_balance,
+        created_at=datetime.now(timezone.utc),
     )
+    db.add(tx)
+    # Caller is responsible for db.commit()
     return new_balance
-
-
-def credit_wallet(db: Client, uid: str, amount: float, reason: str, related_booking_id: str | None = None) -> float:
-    wallet_ref = wallet_doc_ref(db, uid)
-    tx_ref = wallet_tx_collection(db, uid).document()
-    return _apply_ledger_entry(db.transaction(), wallet_ref, tx_ref, amount, "credit", reason, related_booking_id)
-
-
-def debit_wallet(db: Client, uid: str, amount: float, reason: str, related_booking_id: str | None = None) -> float:
-    wallet_ref = wallet_doc_ref(db, uid)
-    tx_ref = wallet_tx_collection(db, uid).document()
-    return _apply_ledger_entry(db.transaction(), wallet_ref, tx_ref, amount, "debit", reason, related_booking_id)

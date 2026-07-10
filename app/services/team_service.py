@@ -2,159 +2,151 @@ from datetime import datetime, timezone
 import uuid
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
-from app.core.db import Client, FieldFilter
-from app.models.team import TeamCreateRequest, TeamResponse, TeamMember
-
-
-def teams_collection(db: Client):
-    return db.collection("teams")
+from app.db.orm import Team, TeamMember, TeamMatchHistory, TeamStats, TeamChallenge
+from app.models.team import TeamCreateRequest, TeamResponse, TeamMember as TeamMemberModel
 
 
-def team_members_ref(db: Client, team_id: str):
-    return db.collection("teams").document(team_id).collection("members")
-
-
-def get_team(db: Client, team_id: str) -> TeamResponse:
-    doc = teams_collection(db).document(team_id).get()
-    if not doc.exists:
+def get_team(db: Session, team_id: str) -> TeamResponse:
+    team = db.query(Team).filter(Team.team_id == team_id).first()
+    if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
-    data = doc.to_dict()
-    members = []
-    for member_doc in team_members_ref(db, team_id).stream():
-        member_data = member_doc.to_dict()
-        members.append(TeamMember(uid=member_doc.id, display_name=member_data.get("display_name"), joined_at=member_data["joined_at"]))
+    return _to_response(team)
+
+
+def _to_response(team: Team) -> TeamResponse:
+    from app.models.team import TeamStats as TeamStatsModel
+    members = [
+        TeamMemberModel(uid=m.uid, display_name=m.display_name, joined_at=m.joined_at.isoformat())
+        for m in team.members
+    ]
+    stats = None
+    if team.stats:
+        s = team.stats
+        stats = TeamStatsModel(
+            total_matches=s.total_matches,
+            wins=s.wins,
+            losses=s.losses,
+            draws=s.draws,
+            win_rate=s.win_rate,
+            rating=s.rating,
+            last_match_at=s.last_match_at,
+        )
     return TeamResponse(
-        team_id=team_id,
-        team_name=data["team_name"],
-        sport=data["sport"],
-        status=data.get("status", "forming"),
-        captain_uid=data["captain_uid"],
+        team_id=team.team_id,
+        team_name=team.team_name,
+        sport=team.sport,
+        captain_uid=team.captain_uid,
+        status=team.status,
         members=members,
         total_members=len(members),
-        booking_id=data.get("booking_id"),
-        created_at=data["created_at"],
+        booking_id=team.booking_id,
+        created_at=team.created_at.isoformat(),
+        created_by=team.created_by,
+        stats=stats,
     )
 
 
-def create_team(db: Client, captain_uid: str, sport: str, team_name: str | None = None) -> TeamResponse:
+def create_team(db: Session, captain_uid: str, sport: str, team_name: str | None = None) -> TeamResponse:
     team_id = str(uuid.uuid4())
     if not team_name:
         team_name = f"{sport.title()} Team {team_id[:8]}"
-
-    now = datetime.now(timezone.utc).isoformat()
-    team_data = {
-        "team_name": team_name,
-        "sport": sport,
-        "captain_uid": captain_uid,
-        "status": "forming",
-        "booking_id": None,
-        "created_at": now,
-    }
-    teams_collection(db).document(team_id).set(team_data)
-
-    # Add captain as first member
-    team_members_ref(db, team_id).document(captain_uid).set({
-        "display_name": None,
-        "joined_at": now,
-    })
-
-    return TeamResponse(
+    now = datetime.now(timezone.utc)
+    team = Team(
         team_id=team_id,
         team_name=team_name,
         sport=sport,
-        status="forming",
         captain_uid=captain_uid,
-        members=[TeamMember(uid=captain_uid, display_name=None, joined_at=now)],
-        total_members=1,
+        status="forming",
         booking_id=None,
         created_at=now,
+        created_by=captain_uid,
     )
+    db.add(team)
+    db.flush()
+    db.add(TeamMember(team_id=team_id, uid=captain_uid, display_name=None, joined_at=now))
+    db.add(TeamStats(team_id=team_id))
+    db.flush()
+    db.refresh(team)
+    return _to_response(team)
 
 
-def add_team_member(db: Client, team_id: str, uid: str, display_name: str | None = None) -> TeamResponse:
-    team_doc = teams_collection(db).document(team_id).get()
-    if not team_doc.exists:
+def add_team_member(db: Session, team_id: str, uid: str, display_name: str | None = None) -> TeamResponse:
+    team = db.query(Team).filter(Team.team_id == team_id).first()
+    if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
-
-    team_data = team_doc.to_dict()
-
-    # Check if already a member
-    member_doc = team_members_ref(db, team_id).document(uid).get()
-    if member_doc.exists:
+    existing = db.query(TeamMember).filter(TeamMember.team_id == team_id, TeamMember.uid == uid).first()
+    if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already a member of this team")
-
-    now = datetime.now(timezone.utc).isoformat()
-    team_members_ref(db, team_id).document(uid).set({
-        "display_name": display_name,
-        "joined_at": now,
-    })
-
-    return get_team(db, team_id)
+    db.add(TeamMember(team_id=team_id, uid=uid, display_name=display_name, joined_at=datetime.now(timezone.utc)))
+    db.flush()
+    db.refresh(team)
+    return _to_response(team)
 
 
-def get_team_members(db: Client, team_id: str) -> list[TeamMember]:
-    members = []
-    for doc in team_members_ref(db, team_id).stream():
-        data = doc.to_dict()
-        members.append(TeamMember(uid=doc.id, display_name=data.get("display_name"), joined_at=data["joined_at"]))
-    return members
+def get_team_members(db: Session, team_id: str) -> list[TeamMemberModel]:
+    members = db.query(TeamMember).filter(TeamMember.team_id == team_id).all()
+    return [TeamMemberModel(uid=m.uid, display_name=m.display_name, joined_at=m.joined_at.isoformat()) for m in members]
 
 
-def link_booking_to_team(db: Client, team_id: str, booking_id: str, status: str = "active") -> TeamResponse:
-    teams_collection(db).document(team_id).update({
-        "booking_id": booking_id,
-        "status": status,
-    })
-    return get_team(db, team_id)
-
-
-def remove_team_member(db: Client, team_id: str, uid: str) -> TeamResponse:
-    team_doc = teams_collection(db).document(team_id).get()
-    if not team_doc.exists:
+def link_booking_to_team(db: Session, team_id: str, booking_id: str, team_status: str = "active") -> TeamResponse:
+    team = db.query(Team).filter(Team.team_id == team_id).first()
+    if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+    team.booking_id = booking_id
+    team.status = team_status
+    db.flush()
+    db.refresh(team)
+    return _to_response(team)
 
-    team_data = team_doc.to_dict()
-    if team_data["captain_uid"] == uid:
+
+def remove_team_member(db: Session, team_id: str, uid: str) -> TeamResponse:
+    team = db.query(Team).filter(Team.team_id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+    if team.captain_uid == uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Captain cannot leave the team")
+    member = db.query(TeamMember).filter(TeamMember.team_id == team_id, TeamMember.uid == uid).first()
+    if member:
+        db.delete(member)
+        db.flush()
+    db.refresh(team)
+    return _to_response(team)
 
-    team_members_ref(db, team_id).document(uid).delete()
-    return get_team(db, team_id)
 
-
-def list_teams(db: Client, sport: str | None = None) -> list[TeamResponse]:
-    """List all active teams, optionally filtered by sport."""
-    query = db.collection("teams").where(filter=FieldFilter("status", "==", "active"))
+def list_teams(db: Session, sport: str | None = None) -> list[TeamResponse]:
+    query = db.query(Team).filter(Team.status == "active")
     if sport:
-        query = query.where(filter=FieldFilter("sport", "==", sport))
-
-    teams = []
-    for doc in query.stream():
-        teams.append(get_team(db, doc.id))
-    return teams
+        query = query.filter(Team.sport == sport)
+    return [_to_response(t) for t in query.all()]
 
 
-def list_player_teams(db: Client, player_uid: str) -> list[TeamResponse]:
-    """List all teams a player is member of."""
-    # Query teams where player is a member
-    teams = []
-    for team_doc in db.collection("teams").stream():
-        team_id = team_doc.id
-        if team_members_ref(db, team_id).document(player_uid).get().exists:
-            teams.append(get_team(db, team_id))
-    return teams
+def list_player_teams(db: Session, player_uid: str) -> list[TeamResponse]:
+    memberships = db.query(TeamMember).filter(TeamMember.uid == player_uid).all()
+    team_ids = [m.team_id for m in memberships]
+    teams = db.query(Team).filter(Team.team_id.in_(team_ids)).all()
+    return [_to_response(t) for t in teams]
 
 
 def create_opponent_challenge(
-    db: Client, team_id: str, captain_uid: str, sport: str, date: str, time: str,
+    db: Session, team_id: str, captain_uid: str, sport: str, date: str, time: str,
     venue_id: str | None = None, skill_level: str | None = None,
-    match_format: str | None = None, number_of_players: int = 11
+    match_format: str | None = None, number_of_players: int = 11,
 ) -> dict:
-    """Create a 'looking for opponent' challenge."""
-    challenge_id = str(uuid.uuid4())
     team = get_team(db, team_id)
-
-    challenge_data = {
+    challenge_id = str(uuid.uuid4())
+    challenge = TeamChallenge(
+        id=challenge_id,
+        from_captain_uid=captain_uid,
+        to_captain_uid=captain_uid,  # placeholder until accepted
+        booking_id=None,
+        status="pending",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(challenge)
+    db.flush()
+    return {
         "challenge_id": challenge_id,
         "from_team_id": team_id,
         "from_team_name": team.team_name,
@@ -167,158 +159,115 @@ def create_opponent_challenge(
         "match_format": match_format,
         "number_of_players": number_of_players,
         "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": challenge.created_at.isoformat(),
     }
 
-    db.collection("team_challenges").document(challenge_id).set(challenge_data)
-    return challenge_data
+
+def list_team_challenges(db: Session, captain_uid: str) -> list[dict]:
+    challenges = db.query(TeamChallenge).filter(TeamChallenge.from_captain_uid == captain_uid).all()
+    return [{"id": c.id, "status": c.status, "created_at": c.created_at.isoformat()} for c in challenges]
 
 
-def list_team_challenges(db: Client, team_id: str) -> list[dict]:
-    """List challenges created by a team."""
-    challenges = []
-    for doc in db.collection("team_challenges").where(filter=FieldFilter("from_team_id", "==", team_id)).stream():
-        challenges.append(doc.to_dict())
-    return challenges
+def discover_opponent_challenges(db: Session, sport: str | None = None, date: str | None = None) -> list[dict]:
+    challenges = db.query(TeamChallenge).filter(TeamChallenge.status == "pending").all()
+    return [{"id": c.id, "from_captain_uid": c.from_captain_uid, "status": c.status} for c in challenges]
 
 
-def discover_opponent_challenges(db: Client, sport: str | None = None, date: str | None = None) -> list[dict]:
-    """Discover available opponent challenges (for team discovery)."""
-    query = db.collection("team_challenges").where(filter=FieldFilter("status", "==", "pending"))
-    if sport:
-        query = query.where(filter=FieldFilter("sport", "==", sport))
-    if date:
-        query = query.where(filter=FieldFilter("date", "==", date))
-
-    challenges = []
-    for doc in query.stream():
-        challenges.append(doc.to_dict())
-    return challenges
-
-
-def accept_opponent_challenge(db: Client, challenge_id: str, accepting_team_id: str, accepting_captain_uid: str) -> dict:
-    """Accept an opponent challenge (creates booking for both teams)."""
-    challenge_doc = db.collection("team_challenges").document(challenge_id).get()
-    if not challenge_doc.exists:
+def accept_opponent_challenge(db: Session, challenge_id: str, accepting_team_id: str, accepting_captain_uid: str) -> dict:
+    challenge = db.query(TeamChallenge).filter(TeamChallenge.id == challenge_id).first()
+    if not challenge:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found")
-
-    challenge = challenge_doc.to_dict()
-    from_team = get_team(db, challenge["from_team_id"])
-
-    # Mark challenge as accepted
-    db.collection("team_challenges").document(challenge_id).update({
-        "status": "accepted",
-        "accepted_by_team_id": accepting_team_id,
-        "accepted_at": datetime.now(timezone.utc).isoformat(),
-    })
-
-    # TODO: Create booking for both teams (implement in booking_service.create_team_vs_team_booking)
-
+    challenge.status = "accepted"
+    challenge.to_captain_uid = accepting_captain_uid
+    db.flush()
     return {
         "challenge_id": challenge_id,
         "status": "accepted",
-        "from_team": from_team.team_name,
-        "accepting_team": get_team(db, accepting_team_id).team_name,
         "message": "Challenge accepted! Both captains will receive credits when match completes.",
     }
 
 
-def reject_opponent_challenge(db: Client, challenge_id: str) -> dict:
-    """Reject an opponent challenge."""
-    db.collection("team_challenges").document(challenge_id).update({
-        "status": "rejected",
-        "rejected_at": datetime.now(timezone.utc).isoformat(),
-    })
+def reject_opponent_challenge(db: Session, challenge_id: str) -> dict:
+    challenge = db.query(TeamChallenge).filter(TeamChallenge.id == challenge_id).first()
+    if not challenge:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found")
+    challenge.status = "rejected"
+    db.flush()
     return {"status": "rejected", "message": "Challenge rejected"}
 
 
-# Team History & Stats
-
 def record_team_match(
-    db: Client, team_id: str, booking_id: str, opponent_team_id: str,
-    opponent_team_name: str, result: str, player_count: int, venue_id: str | None = None
+    db: Session, team_id: str, booking_id: str, opponent_team_id: str,
+    opponent_team_name: str, result: str, player_count: int, venue_id: str | None = None,
 ) -> dict:
-    """Record a match result in team history."""
     match_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-
-    match_data = {
-        "match_id": match_id,
-        "booking_id": booking_id,
-        "opponent_team_id": opponent_team_id,
-        "opponent_team_name": opponent_team_name,
-        "result": result,  # win, loss, draw
-        "player_count": player_count,
-        "played_at": now,
-        "venue_id": venue_id,
-    }
-
-    # Add to team's match history
-    db.collection("teams").document(team_id).collection("history").document(match_id).set(match_data)
-
-    # Update team stats
-    team_doc = teams_collection(db).document(team_id).get()
-    if team_doc.exists:
-        team_data = team_doc.to_dict()
-        stats = team_data.get("stats", {})
-
-        total_matches = stats.get("total_matches", 0) + 1
-        wins = stats.get("wins", 0) + (1 if result == "win" else 0)
-        losses = stats.get("losses", 0) + (1 if result == "loss" else 0)
-        draws = stats.get("draws", 0) + (1 if result == "draw" else 0)
-        win_rate = (wins / total_matches * 100) if total_matches > 0 else 0.0
-
-        # ELO rating update (simplified)
-        rating = stats.get("rating", 1200.0)
-        if result == "win":
-            rating += 25.0
-        elif result == "loss":
-            rating -= 20.0
-
-        new_stats = {
-            "total_matches": total_matches,
-            "wins": wins,
-            "losses": losses,
-            "draws": draws,
-            "win_rate": win_rate,
-            "rating": rating,
-            "last_match_at": now,
-        }
-
-        teams_collection(db).document(team_id).update({"stats": new_stats})
-
-    return match_data
-
-
-def get_team_history(db: Client, team_id: str, limit: int = 10) -> list[dict]:
-    """Get team's match history."""
-    history = []
-    query = (
-        db.collection("teams")
-        .document(team_id)
-        .collection("history")
-        .order_by("played_at", direction="DESCENDING")
+    history = TeamMatchHistory(
+        team_id=team_id,
+        match_id=match_id,
+        booking_id=booking_id,
+        opponent_team_id=opponent_team_id,
+        opponent_team_name=opponent_team_name,
+        result=result,
+        player_count=player_count,
+        played_at=now,
+        venue_id=venue_id,
     )
+    db.add(history)
 
-    for doc in query.stream():
-        history.append(doc.to_dict())
+    stats = db.query(TeamStats).filter(TeamStats.team_id == team_id).first()
+    if stats:
+        stats.total_matches += 1
+        if result == "win":
+            stats.wins += 1
+            stats.rating += 25.0
+        elif result == "loss":
+            stats.losses += 1
+            stats.rating -= 20.0
+        else:
+            stats.draws += 1
+        stats.win_rate = (stats.wins / stats.total_matches * 100) if stats.total_matches > 0 else 0.0
+        stats.last_match_at = now
+    db.flush()
+    return {"match_id": match_id, "result": result, "played_at": now}
 
-    return history[:limit]
+
+def get_team_history(db: Session, team_id: str, limit: int = 10) -> list[dict]:
+    history = (
+        db.query(TeamMatchHistory)
+        .filter(TeamMatchHistory.team_id == team_id)
+        .order_by(TeamMatchHistory.played_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "match_id": h.match_id,
+            "booking_id": h.booking_id,
+            "opponent_team_id": h.opponent_team_id,
+            "opponent_team_name": h.opponent_team_name,
+            "result": h.result,
+            "player_count": h.player_count,
+            "played_at": h.played_at,
+            "venue_id": h.venue_id,
+        }
+        for h in history
+    ]
 
 
-def get_team_stats(db: Client, team_id: str) -> dict:
-    """Get team statistics."""
-    team_doc = teams_collection(db).document(team_id).get()
-    if not team_doc.exists:
+def get_team_stats(db: Session, team_id: str) -> dict:
+    team = db.query(Team).filter(Team.team_id == team_id).first()
+    if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
-
-    team_data = team_doc.to_dict()
-    return team_data.get("stats", {
-        "total_matches": 0,
-        "wins": 0,
-        "losses": 0,
-        "draws": 0,
-        "win_rate": 0.0,
-        "rating": 1200.0,
-        "last_match_at": None,
-    })
+    s = db.query(TeamStats).filter(TeamStats.team_id == team_id).first()
+    if not s:
+        return {"total_matches": 0, "wins": 0, "losses": 0, "draws": 0, "win_rate": 0.0, "rating": 1200.0, "last_match_at": None}
+    return {
+        "total_matches": s.total_matches,
+        "wins": s.wins,
+        "losses": s.losses,
+        "draws": s.draws,
+        "win_rate": s.win_rate,
+        "rating": s.rating,
+        "last_match_at": s.last_match_at,
+    }

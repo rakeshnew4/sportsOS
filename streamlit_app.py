@@ -156,16 +156,15 @@ if not st.session_state.logged_in_uid:
     with signup_tab:
         role = st.radio("I am a...", ["Player", "Venue owner"], horizontal=True, key="signup_role")
         with st.container(border=True), st.form("signup_form"):
-            su_uid = st.text_input("uid (demo only — a real app would generate this)", placeholder="demo_player_1", key="signup_uid")
             su_name = st.text_input("Display name", key="signup_name")
             su_phone = st.text_input("Phone number", placeholder="+91...", key="signup_phone")
-            if st.form_submit_button("Create account", use_container_width=True) and su_uid:
+            if st.form_submit_button("Create account", use_container_width=True) and su_phone:
                 try:
                     if role == "Player":
-                        user_service.register_player(db, su_uid, PlayerRegisterRequest(display_name=su_name, phone=su_phone))
+                        me = user_service.register_player(db, PlayerRegisterRequest(display_name=su_name, phone=su_phone))
                     else:
-                        user_service.register_owner(db, su_uid, OwnerRegisterRequest(display_name=su_name, phone=su_phone))
-                    st.session_state.logged_in_uid = su_uid
+                        me = user_service.register_owner(db, OwnerRegisterRequest(display_name=su_name, phone=su_phone))
+                    st.session_state.logged_in_uid = me.uid
                     st.rerun()
                 except HTTPException as exc:
                     st.error(f"{exc.status_code}: {exc.detail}", icon="⚠️")
@@ -867,7 +866,7 @@ with tab_admin:
             name = st.text_input("display name", key="player_name")
             phone = st.text_input("phone", key="player_phone", placeholder="+91...")
             if st.form_submit_button("Register player", use_container_width=True) and uid:
-                run(user_service.register_player, db, uid, PlayerRegisterRequest(display_name=name, phone=phone))
+                run(user_service.register_player, db, PlayerRegisterRequest(display_name=name, phone=phone), uid=uid)
                 st.rerun()
 
     with col2, st.container(border=True):
@@ -877,7 +876,7 @@ with tab_admin:
             name = st.text_input("display name", key="owner_name")
             phone = st.text_input("phone", key="owner_phone", placeholder="+91...")
             if st.form_submit_button("Register owner", use_container_width=True) and uid:
-                run(user_service.register_owner, db, uid, OwnerRegisterRequest(display_name=name, phone=phone))
+                run(user_service.register_owner, db, OwnerRegisterRequest(display_name=name, phone=phone), uid=uid)
                 st.rerun()
 
     st.subheader("Registered users")
