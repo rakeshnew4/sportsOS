@@ -1,9 +1,12 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getVenueOverview } from "@/lib/api/kpis";
+import { getVenue, updateVenue } from "@/lib/api/venues";
 import { queryKeys } from "@/lib/queryKeys";
+import { Button } from "@/components/ui/Button";
+import { ApiError } from "@/lib/api/client";
 import type { VenueKPIScope } from "@/lib/types";
 
 const SCOPES: VenueKPIScope[] = ["today", "week", "month"];
@@ -13,6 +16,84 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
     <div className="rounded-xl border border-neutral-200 bg-white p-3">
       <p className="text-xs text-neutral-500">{label}</p>
       <p className="text-lg font-semibold text-neutral-900">{value}</p>
+    </div>
+  );
+}
+
+function PaymentInfoCard({ tenantId }: { tenantId: string }) {
+  const { data: venue } = useQuery({
+    queryKey: queryKeys.venue(tenantId),
+    queryFn: () => getVenue(tenantId),
+  });
+
+  if (!venue) return null;
+  return <PaymentInfoForm key={`${venue.upi_id ?? ""}-${venue.booking_phone ?? ""}`} tenantId={tenantId} venue={venue} />;
+}
+
+function PaymentInfoForm({
+  tenantId,
+  venue,
+}: {
+  tenantId: string;
+  venue: { upi_id: string | null; booking_phone: string | null };
+}) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const [upiId, setUpiId] = useState(venue.upi_id ?? "");
+  const [bookingPhone, setBookingPhone] = useState(venue.booking_phone ?? "");
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateVenue(tenantId, { upi_id: upiId.trim() || undefined, booking_phone: bookingPhone.trim() || undefined }),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.venue(tenantId) });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "Could not save"),
+  });
+
+  const dirty = venue && (upiId !== (venue.upi_id ?? "") || bookingPhone !== (venue.booking_phone ?? ""));
+  const missing = venue && (!venue.upi_id || !venue.booking_phone);
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-neutral-900">Payment info</p>
+        <p className="text-xs text-neutral-500 mt-0.5">
+          Players see this UPI ID and phone number to pay you directly for a booking.
+        </p>
+      </div>
+      {missing && (
+        <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+          Add both so players know how to pay you — bookings still work without it, but players won&apos;t
+          know where to send payment.
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          placeholder="UPI ID"
+          value={upiId}
+          onChange={(e) => setUpiId(e.target.value)}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+        <input
+          placeholder="Booking phone"
+          value={bookingPhone}
+          onChange={(e) => setBookingPhone(e.target.value)}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {dirty && (
+        <Button
+          variant="secondary"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          className="text-xs px-3 py-1.5"
+        >
+          {saveMutation.isPending ? "Saving…" : "Save"}
+        </Button>
+      )}
     </div>
   );
 }
@@ -44,6 +125,8 @@ export default function VenueOverviewPage({ params }: { params: Promise<{ tenant
           ))}
         </div>
       </div>
+
+      <PaymentInfoCard tenantId={tenantId} />
 
       {isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
 

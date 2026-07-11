@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.orm import Tenant
-from app.models.venue import GeoPoint, VenueCreateRequest, VenueResponse
+from app.models.venue import GeoPoint, VenueCreateRequest, VenueResponse, VenueUpdateRequest
 from app.services.user_service import grant_owner_role
 
 
@@ -18,18 +18,18 @@ def create_venue(db: Session, uid: str, req: VenueCreateRequest) -> VenueRespons
         geo_lat=req.geo.lat,
         geo_lng=req.geo.lng,
         sports=req.sports,
+        description=req.description,
+        address=req.address,
+        amenities=req.amenities,
+        cover_image_url=req.cover_image_url,
+        upi_id=req.upi_id,
+        booking_phone=req.booking_phone,
         created_at=datetime.now(timezone.utc),
     )
     db.add(tenant)
     grant_owner_role(db, uid, tenant_id)
     db.commit()
-    return VenueResponse(
-        tenant_id=tenant_id,
-        name=req.name,
-        city=req.city,
-        geo=req.geo,
-        sports=req.sports,
-    )
+    return _to_response(tenant)
 
 
 def list_venues(db: Session, city: str | None = None, sport: str | None = None) -> list[VenueResponse]:
@@ -52,6 +52,18 @@ def get_venue(db: Session, tenant_id: str) -> VenueResponse:
     return _to_response(tenant)
 
 
+def update_venue(db: Session, tenant_id: str, req: VenueUpdateRequest) -> VenueResponse:
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venue not found")
+    updates = {k: v for k, v in req.model_dump(exclude_unset=True).items() if v is not None}
+    for key, value in updates.items():
+        setattr(tenant, key, value)
+    db.commit()
+    db.refresh(tenant)
+    return _to_response(tenant)
+
+
 def _to_response(t: Tenant) -> VenueResponse:
     return VenueResponse(
         tenant_id=t.tenant_id,
@@ -59,4 +71,10 @@ def _to_response(t: Tenant) -> VenueResponse:
         city=t.city,
         geo=GeoPoint(lat=t.geo_lat, lng=t.geo_lng),
         sports=t.sports or [],
+        description=t.description,
+        address=t.address,
+        amenities=t.amenities or [],
+        cover_image_url=t.cover_image_url,
+        upi_id=t.upi_id,
+        booking_phone=t.booking_phone,
     )

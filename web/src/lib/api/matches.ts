@@ -43,3 +43,7 @@ export function cancelMatchRequest(tenantId: string, requestId: string) {
     method: "DELETE",
   });
 }
+
+export function listMyMatchRequests() {
+  return apiFetch<MatchRequestResponse[]>(`/players/me/match-requests`);
+}

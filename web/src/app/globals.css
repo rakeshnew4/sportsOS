@@ -24,19 +24,24 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b0c10;
-    --foreground: #f2f3f7;
-    --surface: #16171d;
-    --surface-muted: #1d1f27;
-    --ink-muted: #9199a8;
-    --border: rgba(255, 255, 255, 0.1);
-  }
-}
+/* Light theme only, by design — matches Playo (no dark mode). */
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Scale the root rem base on larger viewports so text AND spacing (padding, gap, radius — all
+   rem-based in Tailwind) grow together on big screens, instead of a fixed-size layout floating in a
+   sea of empty margin. Keep it modest — this is a gentle scale-up, not a redesign. */
+@media (min-width: 1280px) {
+  html {
+    font-size: 17px;
+  }
+}
+@media (min-width: 1600px) {
+  html {
+    font-size: 18.5px;
+  }
 }

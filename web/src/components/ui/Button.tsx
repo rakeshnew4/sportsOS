@@ -16,12 +16,13 @@ const variantClasses: Record<Variant, string> = {
 
 export function Button({
   variant = "primary",
+  pill = false,
   className = "",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; pill?: boolean }) {
   return (
     <button
-      className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 ${variantClasses[variant]} ${className}`}
+      className={`px-4 py-2.5 ${pill ? "rounded-full" : "rounded-xl"} font-semibold text-sm transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 ${variantClasses[variant]} ${className}`}
       {...props}
     />
   );

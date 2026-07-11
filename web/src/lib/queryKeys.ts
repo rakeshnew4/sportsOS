@@ -4,6 +4,7 @@ export const queryKeys = {
   courts: (tenantId: string) => ["courts", tenantId] as const,
   slots: (tenantId: string, courtId: string, date: string) => ["slots", tenantId, courtId, date] as const,
   myBookings: () => ["myBookings"] as const,
+  myMatchRequests: () => ["myMatchRequests"] as const,
   wallet: () => ["wallet"] as const,
   walletTransactions: () => ["walletTransactions"] as const,
   engagement: (uid: string) => ["engagement", uid] as const,
@@ -33,4 +34,9 @@ export const queryKeys = {
     ["inviteCandidates", tenantId, bookingId] as const,
   myInvites: () => ["myInvites"] as const,
   invitePreferences: () => ["invitePreferences"] as const,
+  playerProfile: (uid: string) => ["playerProfile", uid] as const,
+  myProfile: () => ["myProfile"] as const,
+  playerRatingsStats: (uid: string) => ["playerRatingsStats", uid] as const,
+  playerReviews: (uid: string) => ["playerReviews", uid] as const,
+  venueRatingsStats: (tenantId: string) => ["venueRatingsStats", tenantId] as const,
 };

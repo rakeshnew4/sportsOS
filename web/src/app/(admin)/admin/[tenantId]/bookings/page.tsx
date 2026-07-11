@@ -2,13 +2,20 @@
 
 import { use, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { checkinPlayer, completeMatch, listVenueBookings } from "@/lib/api/bookings";
+import { cancelBooking, checkinPlayer, completeMatch, confirmBooking, listVenueBookings } from "@/lib/api/bookings";
 import { listParticipants } from "@/lib/api/matches";
 import { queryKeys } from "@/lib/queryKeys";
 import { toISODate } from "@/lib/date";
 import { Button } from "@/components/ui/Button";
 import { ApiError } from "@/lib/api/client";
 import type { BookingResponse } from "@/lib/types";
+
+const STATUS_STYLES: Record<string, string> = {
+  pending_payment: "bg-amber-50 text-amber-700",
+  confirmed: "bg-emerald-50 text-emerald-700",
+  completed: "bg-neutral-100 text-neutral-600",
+  cancelled: "bg-red-50 text-red-600",
+};
 
 export default function VenueBookingsPage({ params }: { params: Promise<{ tenantId: string }> }) {
   const { tenantId } = use(params);
@@ -72,6 +79,24 @@ function BookingRow({ tenantId, booking }: { tenantId: string; booking: BookingR
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not complete match"),
   });
 
+  const confirmMutation = useMutation({
+    mutationFn: () => confirmBooking(tenantId, booking.booking_id),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["venueBookings"] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "Could not confirm booking"),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: () => cancelBooking(tenantId, booking.booking_id),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["venueBookings"] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "Could not reject booking"),
+  });
+
   const attendees = [booking.created_by, ...(participants?.map((p) => p.uid) ?? [])];
 
   return (
@@ -82,14 +107,35 @@ function BookingRow({ tenantId, booking }: { tenantId: string; booking: BookingR
           <p className="text-sm text-neutral-500">
             {booking.start_time} – {booking.end_time}
           </p>
+          <p className="text-xs text-neutral-400 mt-0.5">{booking.created_by_name || "Player"} · ₹{booking.price}</p>
         </div>
-        <span className="text-xs font-medium rounded-full px-2 py-1 bg-neutral-100 text-neutral-600">
+        <span className={`text-xs font-medium rounded-full px-2 py-1 ${STATUS_STYLES[booking.status] ?? "bg-neutral-100 text-neutral-600"}`}>
           {booking.status.replace("_", " ")}
         </span>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {result && <p className="text-sm text-emerald-600">{result}</p>}
+
+      {booking.status === "pending_payment" && (
+        <div className="flex gap-2">
+          <Button
+            onClick={() => confirmMutation.mutate()}
+            disabled={confirmMutation.isPending || rejectMutation.isPending}
+            className="text-xs px-3 py-1.5"
+          >
+            {confirmMutation.isPending ? "Confirming…" : "Confirm — payment received"}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => rejectMutation.mutate()}
+            disabled={confirmMutation.isPending || rejectMutation.isPending}
+            className="text-xs px-3 py-1.5 text-red-600"
+          >
+            {rejectMutation.isPending ? "Rejecting…" : "Reject"}
+          </Button>
+        </div>
+      )}
 
       {booking.status === "confirmed" && (
         <div className="flex flex-wrap gap-2">

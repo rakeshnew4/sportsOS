@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   ShieldCheck,
   Trophy,
+  User,
   Users,
   Wallet as WalletIcon,
   X,
@@ -23,7 +24,7 @@ import { listNotifications } from "@/lib/api/notifications";
 import { queryKeys } from "@/lib/queryKeys";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Home", icon: HomeIcon },
+  { href: "/home", label: "Home", icon: HomeIcon },
   { href: "/venues", label: "Venues", icon: Compass },
   { href: "/play", label: "Play", icon: Zap },
   { href: "/teams", label: "Teams", icon: Users },
@@ -33,7 +34,7 @@ const NAV_ITEMS = [
   { href: "/notifications", label: "Alerts", icon: Bell },
 ];
 
-const MOBILE_PRIMARY = ["/", "/play", "/bookings", "/wallet"];
+const MOBILE_PRIMARY = ["/home", "/play", "/bookings", "/wallet"];
 
 export function PlayerNav() {
   const pathname = usePathname();
@@ -99,6 +100,13 @@ export function PlayerNav() {
             );
           })}
         </nav>
+        <Link
+          href={`/players/${session.uid}`}
+          className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-muted hover:bg-surface-muted hover:text-foreground"
+        >
+          <User size={17} strokeWidth={2.25} />
+          My profile
+        </Link>
         <Link
           href="/admin"
           className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-muted hover:bg-surface-muted hover:text-foreground"
@@ -188,6 +196,16 @@ export function PlayerNav() {
                   </Link>
                 );
               })}
+              <Link
+                href={`/players/${session.uid}`}
+                onClick={() => setMoreOpen(false)}
+                className="flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-surface-muted/60 py-3 text-xs font-medium text-foreground"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface shadow-sm">
+                  <User size={17} strokeWidth={2.25} />
+                </span>
+                My profile
+              </Link>
               <Link
                 href="/admin"
                 onClick={() => setMoreOpen(false)}

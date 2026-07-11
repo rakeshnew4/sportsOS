@@ -17,6 +17,12 @@ export interface VenueResponse {
   city: string;
   geo: GeoPoint;
   sports: string[];
+  description: string | null;
+  address: string | null;
+  amenities: string[];
+  cover_image_url: string | null;
+  upi_id: string | null;
+  booking_phone: string | null;
 }
 
 export interface CourtResponse {
@@ -29,6 +35,7 @@ export interface CourtResponse {
   close_time: string;
   is_active: boolean;
   dynamic_pricing_enabled: boolean;
+  min_players: number | null;
 }
 
 export interface SlotResponse {
@@ -51,11 +58,14 @@ export interface BookingResponse {
   price: number;
   status: BookingStatus;
   created_by: string;
+  created_by_name: string | null;
   team_id: string | null;
   team_name: string | null;
   is_joinable: boolean;
   slots_total: number;
   slots_open: number;
+  tenant_name: string | null;
+  court_name: string | null;
 }
 
 export interface WalletResponse {
@@ -101,6 +111,8 @@ export interface MatchRequestResponse {
   min_players: number;
   current_count: number;
   matched_booking_id: string | null;
+  tenant_name: string | null;
+  court_name: string | null;
 }
 
 export interface MatchCompletionResponse {
@@ -420,6 +432,29 @@ export interface PlayerRatingsStats {
   avg_rating: number;
   total_ratings: number;
   rating_distribution: Record<number, number>;
+}
+
+export interface VenueRatingsStats {
+  tenant_id: string;
+  avg_rating: number;
+  total_ratings: number;
+}
+
+export type SkillLevel = "beginner" | "intermediate" | "advanced" | "pro";
+
+export interface PlayerProfile {
+  uid: string;
+  display_name: string;
+  phone: string;
+  total_bookings: number;
+  total_matches_played: number;
+  total_hours_played: number;
+  favorite_sport: string | null;
+  repeat_venues_count: number;
+  avg_rating: number | null;
+  total_ratings: number;
+  skill_levels: Record<string, SkillLevel>;
+  created_at: string;
 }
 
 export interface PlayerEngagementKPI {

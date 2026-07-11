@@ -1,9 +1,11 @@
 "use client";
 
 import { use, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Star, UserPlus, Users2 } from "lucide-react";
+import { MessageCircle, Star, UserPlus, Users2, Wallet } from "lucide-react";
 import { cancelBooking, getMyBooking, openToCommunity } from "@/lib/api/bookings";
+import { getVenue } from "@/lib/api/venues";
 import { joinMatch, listParticipants } from "@/lib/api/matches";
 import {
   confirmWaitlistPromotion,
@@ -36,6 +38,12 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
   });
 
   const tenantId = booking?.tenant_id;
+
+  const { data: venue } = useQuery({
+    queryKey: tenantId ? queryKeys.venue(tenantId) : ["venue", "pending"],
+    queryFn: () => getVenue(tenantId!),
+    enabled: !!tenantId,
+  });
 
   const { data: participants } = useQuery({
     queryKey: tenantId ? queryKeys.matchParticipants(tenantId, bookingId) : ["matchParticipants", "pending"],
@@ -195,7 +203,13 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
             <p className="text-ink-muted text-sm">
               {booking.date} · {booking.start_time} – {booking.end_time}
             </p>
-            {booking.team_name && <p className="text-xs text-ink-muted mt-0.5">{booking.team_name}</p>}
+            <p className="text-xs text-ink-muted mt-0.5">
+              {booking.team_name && <span>{booking.team_name} · </span>}
+              Hosted by{" "}
+              <Link href={`/players/${booking.created_by}`} className="font-medium text-foreground hover:underline">
+                {booking.created_by_name || "player"}
+              </Link>
+            </p>
           </div>
         </div>
         <Badge status={booking.status}>{booking.status.replace("_", " ")}</Badge>
@@ -205,15 +219,62 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
+      {isOwner && booking.status === "pending_payment" && venue && (
+        <Card className="space-y-3">
+          <p className="text-sm font-semibold flex items-center gap-1.5">
+            <Wallet size={15} /> Pay the venue directly
+          </p>
+          <p className="text-xs text-ink-muted">
+            The venue confirms your booking here once they&apos;ve received payment.
+          </p>
+          <div className="space-y-2">
+            {venue.upi_id ? (
+              <a
+                href={`upi://pay?pa=${encodeURIComponent(venue.upi_id)}&pn=${encodeURIComponent(
+                  venue.name
+                )}&am=${booking.price}&cu=INR&tn=${encodeURIComponent(`${sportLabel(booking.sport)} booking`)}`}
+                className="block"
+              >
+                <Button variant="gradient" pill className="w-full">
+                  Pay ₹{booking.price} via UPI
+                </Button>
+              </a>
+            ) : (
+              <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                This venue hasn&apos;t added a UPI ID yet — use the phone number below to arrange payment.
+              </p>
+            )}
+            {venue.booking_phone && (
+              <a
+                href={`https://wa.me/${normalizePhone(venue.booking_phone)}?text=${encodeURIComponent(
+                  `Hi, I booked ${sportLabel(booking.sport)} on ${booking.date} at ${booking.start_time}–${booking.end_time} (₹${booking.price}). Confirming my booking here.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+              >
+                <Button variant="secondary" pill className="w-full flex items-center justify-center gap-1.5">
+                  <MessageCircle size={15} /> Chat on WhatsApp
+                </Button>
+              </a>
+            )}
+          </div>
+        </Card>
+      )}
+
       <Card>
         <p className="text-sm font-semibold mb-2 flex items-center gap-1.5">
           <Users2 size={15} /> Players ({participants?.length ?? 0})
         </p>
         <div className="space-y-1">
           {participants?.map((p) => (
-            <p key={p.uid} className="text-sm text-ink-muted">
+            <Link
+              key={p.uid}
+              href={`/players/${p.uid}`}
+              className="block text-sm text-ink-muted hover:text-foreground hover:underline"
+            >
               {p.display_name || p.uid}
-            </p>
+            </Link>
           ))}
           {participants && participants.length === 0 && (
             <p className="text-sm text-ink-muted/70">No one has joined yet.</p>
@@ -238,7 +299,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
             <>
               {candidatesLoading && <p className="text-xs text-ink-muted">Finding players…</p>}
               {invitesSent && (
-                <p className="text-xs text-emerald-600">Invites sent! They'll show up in the players' notifications.</p>
+                <p className="text-xs text-emerald-600">Invites sent! They&apos;ll show up in the players&apos; notifications.</p>
               )}
               {inviteCandidates && inviteCandidates.length === 0 && (
                 <p className="text-xs text-ink-muted/70">
@@ -297,7 +358,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
       )}
 
       {canJoin && (
-        <Button variant="gradient" onClick={() => joinMutation.mutate()} disabled={joinMutation.isPending} className="w-full">
+        <Button variant="gradient" pill onClick={() => joinMutation.mutate()} disabled={joinMutation.isPending} className="w-full">
           {joinMutation.isPending ? "Joining…" : `Join this match (${booking.slots_open} open)`}
         </Button>
       )}
@@ -305,6 +366,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
       {canWaitlist && !waitlistPosition && (
         <Button
           variant="secondary"
+          pill
           onClick={() => joinWaitlistMutation.mutate()}
           disabled={joinWaitlistMutation.isPending}
           className="w-full"
@@ -369,6 +431,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
       {canCancel && (
         <Button
           variant="secondary"
+          pill
           onClick={() => cancelMutation.mutate()}
           disabled={cancelMutation.isPending}
           className="w-full text-red-600"
@@ -392,6 +455,11 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
       )}
     </div>
   );
+}
+
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length === 10 ? `91${digits}` : digits;
 }
 
 function RatingForm({

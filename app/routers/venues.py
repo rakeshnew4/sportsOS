@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user, require_venue_access
 from app.db.orm import BookingParticipant, User
-from app.models.venue import VenueCreateRequest, VenueResponse
+from app.models.venue import VenueCreateRequest, VenueResponse, VenueUpdateRequest
 from app.services import booking_service, venue_service
 
 router = APIRouter(prefix="/venues", tags=["venues"])
@@ -67,6 +67,16 @@ def get_venue(
     db: Session = Depends(get_db),
 ) -> VenueResponse:
     return venue_service.get_venue(db, tenant_id)
+
+
+@router.patch("/{tenant_id}")
+def update_venue(
+    tenant_id: str,
+    req: VenueUpdateRequest,
+    user: CurrentUser = Depends(require_venue_access),
+    db: Session = Depends(get_db),
+) -> VenueResponse:
+    return venue_service.update_venue(db, tenant_id, req)
 
 
 @router.get("/{tenant_id}/players")

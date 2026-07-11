@@ -25,3 +25,5 @@ class MatchRequestResponse(BaseModel):
     min_players: int
     current_count: int
     matched_booking_id: str | None = None
+    tenant_name: str | None = None
+    court_name: str | None = None

@@ -8,6 +8,7 @@ class CourtCreateRequest(BaseModel):
     open_time: str  # "06:00"
     close_time: str  # "23:00"
     dynamic_pricing_enabled: bool = False
+    min_players: int | None = None  # Players needed in the "Join Match" queue to auto-confirm a booking; None = sport default
 
 
 class CourtUpdateRequest(BaseModel):
@@ -16,6 +17,7 @@ class CourtUpdateRequest(BaseModel):
     open_time: str | None = None
     close_time: str | None = None
     is_active: bool | None = None
+    min_players: int | None = None
 
 
 class CourtResponse(BaseModel):
@@ -28,3 +30,4 @@ class CourtResponse(BaseModel):
     close_time: str
     is_active: bool
     dynamic_pricing_enabled: bool = False
+    min_players: int | None = None

@@ -24,11 +24,14 @@ class BookingResponse(BaseModel):
     price: float
     status: BookingStatus
     created_by: str
+    created_by_name: str | None = None
     team_id: str | None = None
     team_name: str | None = None
     is_joinable: bool
     slots_total: int
     slots_open: int
+    tenant_name: str | None = None
+    court_name: str | None = None
 
 
 class TimeRange(BaseModel):

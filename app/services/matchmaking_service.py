@@ -11,7 +11,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.db.orm import Booking, BookingParticipant, MatchRequest, Wallet, WalletTransaction
+from app.db.orm import Booking, BookingParticipant, MatchRequest, User, Wallet, WalletTransaction
 from app.models.matchmaking import MatchRequestCreate, MatchRequestResponse
 from app.services.booking_service import slot_overlaps_existing, to_minutes
 from app.services.court_service import get_court
@@ -33,7 +33,9 @@ def _min_players_for(sport: str) -> int:
     return MIN_PLAYERS.get(sport, DEFAULT_MIN_PLAYERS)
 
 
-def _to_response(mr: MatchRequest, current_count: int) -> MatchRequestResponse:
+def _to_response(
+    mr: MatchRequest, current_count: int, tenant_name: str | None = None, court_name: str | None = None
+) -> MatchRequestResponse:
     return MatchRequestResponse(
         request_id=mr.request_id,
         tenant_id=mr.tenant_id,
@@ -47,6 +49,8 @@ def _to_response(mr: MatchRequest, current_count: int) -> MatchRequestResponse:
         min_players=mr.min_players,
         current_count=current_count,
         matched_booking_id=mr.matched_booking_id,
+        tenant_name=tenant_name,
+        court_name=court_name,
     )
 
 
@@ -79,6 +83,7 @@ def _form_match(
     end_time: str,
     price: float,
     team_id: str,
+    tenant_name: str | None = None,
 ) -> str | None:
     # Verify all still waiting and have enough balance
     share = round(price / len(waiting), 2)
@@ -96,6 +101,7 @@ def _form_match(
     now = datetime.now(timezone.utc)
     booking_id = uuid.uuid4().hex
     first_uid = waiting[0].uid
+    first_user = db.query(User).filter(User.uid == first_uid).first()
 
     booking = Booking(
         booking_id=booking_id,
@@ -108,10 +114,12 @@ def _form_match(
         price=price,
         status="confirmed",
         created_by=first_uid,
+        created_by_name=first_user.display_name if first_user else None,
         team_id=team_id,
         is_joinable=False,
         slots_total=len(waiting),
         slots_open=0,
+        tenant_name=tenant_name,
         created_at=now,
     )
     db.add(booking)
@@ -155,7 +163,7 @@ def create_match_request(db: Session, tenant_id: str, uid: str, req: MatchReques
     if any(mr.uid == uid for mr in waiting_now):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You're already queued for this slot")
 
-    min_players = _min_players_for(court.sport)
+    min_players = court.min_players or _min_players_for(court.sport)
     mr = MatchRequest(
         request_id=uuid.uuid4().hex,
         tenant_id=tenant_id,
@@ -189,14 +197,16 @@ def create_match_request(db: Session, tenant_id: str, uid: str, req: MatchReques
             except HTTPException:
                 pass
 
+        from app.services.venue_service import get_venue
+        venue = get_venue(db, tenant_id)
+
         formed_booking_id = _form_match(
             db, waiting, tenant_id, req.court_id, court.sport,
             req.date, req.start_time, req.end_time, price, team.team_id,
+            tenant_name=venue.name,
         )
         if formed_booking_id:
             try:
-                from app.services.venue_service import get_venue
-                venue = get_venue(db, tenant_id)
                 notification_service.notify_match_formed(
                     db, formed_booking_id,
                     [w.uid for w in waiting],
@@ -232,6 +242,29 @@ def list_match_requests(db: Session, tenant_id: str, court_id: str, date: str) -
         key = (mr.start_time, mr.end_time)
         current = waiting_counts.get(key, 0) if mr.status == "waiting" else mr.min_players
         results.append(_to_response(mr, current))
+    return results
+
+
+def list_my_match_requests(db: Session, uid: str) -> list[MatchRequestResponse]:
+    from app.services.venue_service import get_venue
+
+    mrs = (
+        db.query(MatchRequest)
+        .filter(MatchRequest.uid == uid)
+        .order_by(MatchRequest.created_at.desc())
+        .all()
+    )
+    results = []
+    for mr in mrs:
+        if mr.status == "waiting":
+            current = len(
+                _waiting_requests_for_slot(db, mr.tenant_id, mr.court_id, mr.date, mr.start_time, mr.end_time)
+            )
+        else:
+            current = mr.min_players
+        venue = get_venue(db, mr.tenant_id)
+        court = get_court(db, mr.tenant_id, mr.court_id)
+        results.append(_to_response(mr, current, tenant_name=venue.name, court_name=court.name))
     return results
 
 

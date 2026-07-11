@@ -1,7 +1,7 @@
 import { apiFetch } from "./client";
 import type { BookingResponse, MatchCompletionResponse, SlotResponse } from "@/lib/types";
 
-export function getSlots(tenantId: string, courtId: string, date: string, granularity = 30) {
+export function getSlots(tenantId: string, courtId: string, date: string, granularity = 60) {
   return apiFetch<SlotResponse[]>(
     `/venues/${tenantId}/courts/${courtId}/slots?date=${date}&granularity=${granularity}`
   );
@@ -36,6 +36,12 @@ export function getMyBooking(bookingId: string) {
 
 export function cancelBooking(tenantId: string, bookingId: string) {
   return apiFetch<BookingResponse>(`/venues/${tenantId}/bookings/${bookingId}/cancel`, {
+    method: "PATCH",
+  });
+}
+
+export function confirmBooking(tenantId: string, bookingId: string) {
+  return apiFetch<BookingResponse>(`/venues/${tenantId}/bookings/${bookingId}/confirm`, {
     method: "PATCH",
   });
 }

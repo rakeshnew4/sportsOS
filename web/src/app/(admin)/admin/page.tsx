@@ -29,6 +29,12 @@ export default function MyVenuesPage() {
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [sports, setSports] = useState("");
+  const [description, setDescription] = useState("");
+  const [address, setAddress] = useState("");
+  const [amenities, setAmenities] = useState("");
+  const [coverImageUrl, setCoverImageUrl] = useState("");
+  const [upiId, setUpiId] = useState("");
+  const [bookingPhone, setBookingPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const createMutation = useMutation({
@@ -38,10 +44,18 @@ export default function MyVenuesPage() {
         city,
         geo: { lat: Number(lat), lng: Number(lng) },
         sports: sports.split(",").map((s) => s.trim()).filter(Boolean),
+        description: description.trim() || undefined,
+        address: address.trim() || undefined,
+        amenities: amenities.split(",").map((a) => a.trim()).filter(Boolean),
+        cover_image_url: coverImageUrl.trim() || undefined,
+        upi_id: upiId.trim() || undefined,
+        booking_phone: bookingPhone.trim() || undefined,
       }),
     onSuccess: (venue) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.venue(venue.tenant_id) });
-      router.push(`/admin/${venue.tenant_id}`);
+      // Send them straight to Courts (with the add-court form open) — a venue isn't
+      // bookable until it has at least one court with pricing and hours set.
+      router.push(`/admin/${venue.tenant_id}/courts?new=1`);
       router.refresh();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not create venue"),
@@ -73,7 +87,7 @@ export default function MyVenuesPage() {
           );
         })}
         {tenantIds.length === 0 && (
-          <p className="text-sm text-neutral-500">You don't manage any venues yet.</p>
+          <p className="text-sm text-neutral-500">You don&apos;t manage any venues yet.</p>
         )}
       </div>
 
@@ -133,6 +147,49 @@ export default function MyVenuesPage() {
             required
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
+          <textarea
+            placeholder="Description (optional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <input
+            placeholder="Street address (optional)"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <input
+            placeholder="Amenities, comma separated (optional, e.g. parking, showers)"
+            value={amenities}
+            onChange={(e) => setAmenities(e.target.value)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <input
+            placeholder="Cover image URL (optional)"
+            value={coverImageUrl}
+            onChange={(e) => setCoverImageUrl(e.target.value)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              placeholder="UPI ID (optional)"
+              value={upiId}
+              onChange={(e) => setUpiId(e.target.value)}
+              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+            <input
+              placeholder="Booking phone (optional)"
+              value={bookingPhone}
+              onChange={(e) => setBookingPhone(e.target.value)}
+              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+          <p className="text-xs text-neutral-400">
+            Players pay you directly via this UPI ID and can reach you on this number to confirm — you can
+            add these later from your venue&apos;s overview page too.
+          </p>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex gap-2">
             <Button type="submit" disabled={createMutation.isPending}>

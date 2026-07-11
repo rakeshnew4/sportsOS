@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Gift, Sparkles, Trophy } from "lucide-react";
 import {
   createReferralCode,
   getLeaderboard,
@@ -12,6 +13,9 @@ import {
 } from "@/lib/api/rewards";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api/client";
 
 const LEADERBOARDS: { kind: LeaderboardKind; label: string }[] = [
@@ -21,7 +25,6 @@ const LEADERBOARDS: { kind: LeaderboardKind; label: string }[] = [
 ];
 
 export default function RewardsPage() {
-  const queryClient = useQueryClient();
   const [leaderboardKind, setLeaderboardKind] = useState<LeaderboardKind>("credits-monthly");
   const [error, setError] = useState<string | null>(null);
 
@@ -55,63 +58,75 @@ export default function RewardsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold">Rewards</h1>
-        <p className="text-neutral-500 text-sm">Captain credits, referrals, and leaderboards.</p>
+        <p className="text-ink-muted text-sm">Captain credits, referrals, and leaderboards.</p>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {captainStats && (
-        <div className="rounded-2xl bg-emerald-600 text-white p-5 grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-xs opacity-80">Credits this month</p>
-            <p className="text-xl font-bold">{captainStats.credits_this_month}</p>
+        <div className="rounded-3xl bg-gradient-to-br from-brand-from to-brand-to p-5 text-white shadow-lg shadow-indigo-600/20">
+          <div className="flex items-center gap-2 opacity-80 mb-3">
+            <Trophy size={15} strokeWidth={2.25} />
+            <p className="text-sm">Captain stats</p>
           </div>
-          <div>
-            <p className="text-xs opacity-80">Matches hosted</p>
-            <p className="text-xl font-bold">{captainStats.matches_hosted}</p>
-          </div>
-          <div>
-            <p className="text-xs opacity-80">Total credits earned</p>
-            <p className="text-xl font-bold">{captainStats.total_credits_earned}</p>
-          </div>
-          <div>
-            <p className="text-xs opacity-80">Acceptance rate</p>
-            <p className="text-xl font-bold">{captainStats.acceptance_rate}%</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs opacity-80">Credits this month</p>
+              <p className="text-xl font-bold">{captainStats.credits_this_month}</p>
+            </div>
+            <div>
+              <p className="text-xs opacity-80">Matches hosted</p>
+              <p className="text-xl font-bold">{captainStats.matches_hosted}</p>
+            </div>
+            <div>
+              <p className="text-xs opacity-80">Total credits earned</p>
+              <p className="text-xl font-bold">{captainStats.total_credits_earned}</p>
+            </div>
+            <div>
+              <p className="text-xs opacity-80">Acceptance rate</p>
+              <p className="text-xl font-bold">{captainStats.acceptance_rate}%</p>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-2">
-        <p className="text-sm font-semibold text-neutral-700">Referrals</p>
+      <Card className="space-y-2.5">
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          <Gift size={15} strokeWidth={2.25} /> Referrals
+        </p>
         {referralEarnings && (
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-ink-muted">
             {referralEarnings.total_referrals} referrals · ₹{referralEarnings.total_credits_earned} earned
           </p>
         )}
         {referralMutation.data ? (
-          <div className="text-sm">
-            <p className="font-mono text-neutral-900">{referralMutation.data.referral_code}</p>
-            <p className="text-xs text-neutral-500 break-all">{referralMutation.data.share_link}</p>
+          <div className="rounded-xl bg-surface-muted px-3 py-2.5 space-y-0.5">
+            <p className="font-mono text-sm font-semibold">{referralMutation.data.referral_code}</p>
+            <p className="text-xs text-ink-muted break-all">{referralMutation.data.share_link}</p>
           </div>
         ) : (
           <Button
-            variant="secondary"
+            variant="gradient"
+            pill
             onClick={() => referralMutation.mutate()}
             disabled={referralMutation.isPending}
+            className="text-sm px-5"
           >
             {referralMutation.isPending ? "Generating…" : "Get my referral code"}
           </Button>
         )}
-      </div>
+      </Card>
 
       <div>
-        <div className="flex gap-1 rounded-xl bg-neutral-100 p-1 mb-2">
+        <div className="flex gap-1 rounded-2xl bg-surface-muted p-1 mb-3">
           {LEADERBOARDS.map((lb) => (
             <button
               key={lb.kind}
               onClick={() => setLeaderboardKind(lb.kind)}
-              className={`flex-1 rounded-lg py-1.5 text-xs font-medium ${
-                leaderboardKind === lb.kind ? "bg-white shadow-sm text-neutral-900" : "text-neutral-500"
+              className={`flex-1 rounded-xl py-2.5 text-xs font-semibold transition-colors ${
+                leaderboardKind === lb.kind
+                  ? "bg-gradient-to-r from-brand-from to-brand-to text-white shadow-md shadow-indigo-600/20"
+                  : "text-ink-muted"
               }`}
             >
               {lb.label}
@@ -120,44 +135,51 @@ export default function RewardsPage() {
         </div>
         <div className="space-y-2">
           {leaderboard?.map((entry) => (
-            <div
-              key={entry.player_uid}
-              className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-4 py-2"
-            >
-              <span className="text-sm text-neutral-700">
-                #{entry.rank} {entry.player_name}
-              </span>
-              <span className="text-sm font-semibold text-neutral-900">
-                {leaderboardKind === "credits-monthly" && `${entry.credits_earned_month} cr`}
-                {leaderboardKind === "matches-hosted" && `${entry.matches_hosted_month} matches`}
-                {leaderboardKind === "new-players-referred" && `${entry.new_players_brought} players`}
-              </span>
-            </div>
+            <Card key={entry.player_uid}>
+              <div className="flex items-center gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">
+                  #{entry.rank}
+                </span>
+                <span className="text-sm flex-1 truncate">{entry.player_name}</span>
+                <span className="text-sm font-semibold shrink-0">
+                  {leaderboardKind === "credits-monthly" && `${entry.credits_earned_month} cr`}
+                  {leaderboardKind === "matches-hosted" && `${entry.matches_hosted_month} matches`}
+                  {leaderboardKind === "new-players-referred" && `${entry.new_players_brought} players`}
+                </span>
+              </div>
+            </Card>
           ))}
           {leaderboard && leaderboard.length === 0 && (
-            <p className="text-sm text-neutral-500">No data yet.</p>
+            <EmptyState icon={Trophy} title="No leaderboard data yet" />
           )}
         </div>
       </div>
 
       <div>
-        <p className="text-sm font-semibold text-neutral-700 mb-2">Reward history</p>
-        {historyLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+        <p className="text-sm font-semibold mb-2">Reward history</p>
+        {historyLoading && (
+          <div className="space-y-2">
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+          </div>
+        )}
         <div className="space-y-2">
           {history?.map((r) => (
-            <div
-              key={r.reward_id}
-              className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-4 py-3"
-            >
-              <div>
-                <p className="text-sm font-medium text-neutral-900">{r.reason}</p>
-                <p className="text-xs text-neutral-400">{new Date(r.issued_at).toLocaleString()}</p>
+            <Card key={r.reward_id}>
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+                  <Sparkles size={16} strokeWidth={2.25} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{r.reason}</p>
+                  <p className="text-xs text-ink-muted">{new Date(r.issued_at).toLocaleString()}</p>
+                </div>
+                <p className="text-sm font-semibold text-emerald-600 shrink-0">+{r.credits_amount} cr</p>
               </div>
-              <p className="text-sm font-semibold text-emerald-600">+{r.credits_amount} cr</p>
-            </div>
+            </Card>
           ))}
           {history && history.length === 0 && (
-            <p className="text-sm text-neutral-500">No rewards yet — host a match to start earning.</p>
+            <EmptyState icon={Sparkles} title="No rewards yet" description="Host a match to start earning." />
           )}
         </div>
       </div>

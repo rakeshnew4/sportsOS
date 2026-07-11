@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.db.orm import Booking, BookingParticipant
+from app.db.orm import Booking, BookingParticipant, User
 from app.models.booking import AvailabilityResponse, BookingCreateRequest, BookingResponse, SlotResponse, TimeRange
 from app.services.court_service import get_court
 
@@ -28,11 +29,14 @@ def booking_to_response(b: Booking) -> BookingResponse:
         price=b.price,
         status=b.status,
         created_by=b.created_by,
+        created_by_name=b.created_by_name,
         team_id=b.team_id,
         team_name=b.team_name,
         is_joinable=b.is_joinable,
         slots_total=b.slots_total,
         slots_open=b.slots_open,
+        tenant_name=b.tenant_name,
+        court_name=b.court.name if b.court else None,
     )
 
 
@@ -156,6 +160,11 @@ def create_booking(db: Session, tenant_id: str, uid: str, req: BookingCreateRequ
     from app.services.team_service import create_team
     team = create_team(db, uid, court.sport, req.team_name)
 
+    creator = db.query(User).filter(User.uid == uid).first()
+
+    from app.services.venue_service import get_venue
+    venue = get_venue(db, tenant_id)
+
     booking = Booking(
         booking_id=uuid.uuid4().hex,
         tenant_id=tenant_id,
@@ -165,13 +174,18 @@ def create_booking(db: Session, tenant_id: str, uid: str, req: BookingCreateRequ
         start_time=req.start_time,
         end_time=req.end_time,
         price=price,
-        status="confirmed",
+        # Direct court bookings are pay-at-venue: the slot is held immediately (blocking
+        # other bookings, see slot_overlaps_existing/ACTIVE_STATUSES) but only becomes
+        # "confirmed" once venue staff verify payment via confirm_booking below.
+        status="pending_payment",
         created_by=uid,
+        created_by_name=creator.display_name if creator else None,
         team_id=team.team_id,
         team_name=team.team_name,
         is_joinable=False,
         slots_total=0,
         slots_open=0,
+        tenant_name=venue.name,
         created_at=datetime.now(timezone.utc),
     )
     db.add(booking)
@@ -199,7 +213,14 @@ def get_booking(db: Session, tenant_id: str, booking_id: str) -> Booking:
 
 
 def list_my_bookings(db: Session, uid: str) -> list[BookingResponse]:
-    bookings = db.query(Booking).filter(Booking.created_by == uid).all()
+    participant_booking_ids = {
+        bp.booking_id for bp in db.query(BookingParticipant).filter(BookingParticipant.uid == uid).all()
+    }
+    bookings = (
+        db.query(Booking)
+        .filter(or_(Booking.created_by == uid, Booking.booking_id.in_(participant_booking_ids)))
+        .all()
+    )
     return [booking_to_response(b) for b in bookings]
 
 
@@ -222,6 +243,17 @@ def cancel_booking(db: Session, tenant_id: str, booking_id: str, uid: str, is_st
     except Exception:
         pass
 
+    return booking_to_response(booking)
+
+
+def confirm_booking(db: Session, tenant_id: str, booking_id: str) -> BookingResponse:
+    """Venue staff confirms a pay-at-venue booking once payment has been received."""
+    booking = get_booking(db, tenant_id, booking_id)
+    if booking.status != "pending_payment":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Booking is already {booking.status}")
+    booking.status = "confirmed"
+    db.commit()
+    db.refresh(booking)
     return booking_to_response(booking)
 
 

@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status as http_status
 from pydantic import BaseModel
 
 from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user
-from app.db.orm import User
+from app.db.orm import Rating, User
 
 router = APIRouter(prefix="/players", tags=["players"])
+
+VALID_SKILL_LEVELS = ("beginner", "intermediate", "advanced", "pro")
 
 
 class PlayerProfile(BaseModel):
@@ -18,7 +20,13 @@ class PlayerProfile(BaseModel):
     favorite_sport: str | None = None
     repeat_venues_count: int = 0
     avg_rating: float | None = None
+    total_ratings: int = 0
+    skill_levels: dict[str, str] = {}
     created_at: str
+
+
+class SkillLevelsUpdate(BaseModel):
+    skill_levels: dict[str, str]
 
 
 class PlayerSearchResult(BaseModel):
@@ -47,6 +55,8 @@ def _build_profile(db: Session, uid: str, expose_phone: bool = False) -> PlayerP
         return PlayerProfile(uid=uid, display_name="Unknown", phone="", created_at="")
 
     engagement = kpi_service.get_player_engagement_kpi(db, uid, PlayerKPIScope.ALL_TIME)
+    ratings = db.query(Rating).filter(Rating.to_uid == uid).all()
+    avg_rating = round(sum(r.rating for r in ratings) / len(ratings), 2) if ratings else None
     return PlayerProfile(
         uid=uid,
         display_name=user.display_name or "",
@@ -56,7 +66,9 @@ def _build_profile(db: Session, uid: str, expose_phone: bool = False) -> PlayerP
         total_hours_played=engagement.hours_played,
         favorite_sport=engagement.favorite_sport,
         repeat_venues_count=engagement.repeat_venues,
-        avg_rating=None,
+        avg_rating=avg_rating,
+        total_ratings=len(ratings),
+        skill_levels=user.skill_levels or {},
         created_at=user.created_at.isoformat() if user.created_at else "",
     )
 
@@ -75,6 +87,27 @@ def get_player_profile(
     db: Session = Depends(get_db),
 ) -> PlayerProfile:
     return _build_profile(db, uid, expose_phone=False)
+
+
+@router.put("/me/skills")
+def update_my_skills(
+    req: SkillLevelsUpdate,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PlayerProfile:
+    for sport, level in req.skill_levels.items():
+        if level not in VALID_SKILL_LEVELS:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid skill level '{level}' for {sport}. Must be one of {VALID_SKILL_LEVELS}.",
+            )
+
+    db_user = db.query(User).filter(User.uid == user.uid).first()
+    if not db_user:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="User not found")
+    db_user.skill_levels = {**(db_user.skill_levels or {}), **req.skill_levels}
+    db.commit()
+    return _build_profile(db, user.uid, expose_phone=True)
 
 
 @router.get("/search")

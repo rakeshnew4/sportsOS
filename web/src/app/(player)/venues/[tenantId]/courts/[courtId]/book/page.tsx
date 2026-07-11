@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getCourt } from "@/lib/api/venues";
+import { getCourt, listCourts } from "@/lib/api/venues";
 import { getSlots, createBooking } from "@/lib/api/bookings";
 import { suggestTeamNames } from "@/lib/api/teams";
 import { queryKeys } from "@/lib/queryKeys";
@@ -17,7 +17,7 @@ import { getSportTheme, sportLabel } from "@/lib/sportTheme";
 import { IndianRupee } from "lucide-react";
 import { useSession } from "@/components/providers/SessionProvider";
 
-const MIN_SLOT_LENGTH = 2; // 2 x 30min = 1 hour minimum, enforced by the backend
+const MIN_SLOT_LENGTH = 1; // 1 slot = 1 hour, enforced by 60-min granularity + the backend's 60-min minimum
 
 export default function BookCourtPage({
   params,
@@ -29,7 +29,10 @@ export default function BookCourtPage({
   const queryClient = useQueryClient();
   const session = useSession();
 
-  const [date, setDate] = useState(() => toISODate(new Date()));
+  const [date, setDate] = useState(() => {
+    if (typeof window === "undefined") return toISODate(new Date());
+    return new URLSearchParams(window.location.search).get("date") || toISODate(new Date());
+  });
   const [selectedStart, setSelectedStart] = useState<number | null>(null);
   const [selectedLength, setSelectedLength] = useState(MIN_SLOT_LENGTH);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +42,12 @@ export default function BookCourtPage({
     queryKey: ["court", tenantId, courtId],
     queryFn: () => getCourt(tenantId, courtId),
   });
+
+  const { data: venueCourts } = useQuery({
+    queryKey: queryKeys.courts(tenantId),
+    queryFn: () => listCourts(tenantId),
+  });
+  const sameSportCourts = venueCourts?.filter((c) => c.sport === court?.sport) ?? [];
 
   const { data: nameSuggestions, refetch: refetchNames, isFetching: isFetchingNames } = useQuery({
     queryKey: ["teamNameSuggestions", court?.sport, session.display_name],
@@ -69,10 +78,10 @@ export default function BookCourtPage({
         team_name: teamName.trim() || undefined,
       });
     },
-    onSuccess: () => {
+    onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.slots(tenantId, courtId, date) });
       queryClient.invalidateQueries({ queryKey: queryKeys.myBookings() });
-      router.push("/bookings");
+      router.push(`/bookings/${booking.booking_id}`);
     },
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : "Could not book that slot");
@@ -127,6 +136,32 @@ export default function BookCourtPage({
           )}
         </div>
       </div>
+
+      {sameSportCourts.length > 1 && (
+        <div>
+          <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Court</p>
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {sameSportCourts.map((c) => {
+              const active = c.court_id === courtId;
+              return (
+                <button
+                  key={c.court_id}
+                  onClick={() => {
+                    if (!active) router.push(`/venues/${tenantId}/courts/${c.court_id}/book?date=${date}`);
+                  }}
+                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
+                    active
+                      ? "bg-gradient-to-r from-brand-from to-brand-to text-white shadow-md shadow-indigo-600/20"
+                      : "bg-surface-muted text-ink-muted hover:text-foreground"
+                  }`}
+                >
+                  {c.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <DateStrip selected={date} onSelect={handleSelectDate} />
 

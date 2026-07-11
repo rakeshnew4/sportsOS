@@ -37,10 +37,17 @@ export function BookingSummary({
 }) {
   if (selectedSlots.length === 0) return null;
 
+  const toMinutes = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+
   const startTime = selectedSlots[0].start_time;
   const endTime = selectedSlots[selectedSlots.length - 1].end_time;
   const totalPrice = selectedSlots.reduce((sum, s) => sum + (s.price ?? 0), 0);
-  const durationHours = selectedSlots.length / 2;
+  const durationHours = (toMinutes(endTime) - toMinutes(startTime)) / 60;
+  const stepMinutes = toMinutes(selectedSlots[0].end_time) - toMinutes(selectedSlots[0].start_time);
+  const stepLabel = stepMinutes % 60 === 0 ? `+${stepMinutes / 60} hr` : `+${stepMinutes} min`;
 
   return (
     <div className="fixed bottom-16 md:bottom-0 left-0 right-0 z-20 border-t border-border bg-surface p-4 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] rounded-t-3xl md:rounded-none">
@@ -62,7 +69,7 @@ export function BookingSummary({
             >
               <Minus size={14} />
             </button>
-            <span className="text-xs text-ink-muted w-16 text-center">+30 min</span>
+            <span className="text-xs text-ink-muted w-16 text-center">{stepLabel}</span>
             <button
               onClick={onExtend}
               disabled={!canExtend}
@@ -115,10 +122,10 @@ export function BookingSummary({
         )}
 
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={onClear} className="flex-1">
+          <Button variant="secondary" pill onClick={onClear} className="flex-1">
             Clear
           </Button>
-          <Button variant="gradient" onClick={onConfirm} disabled={loading} className="flex-[2]">
+          <Button variant="gradient" pill onClick={onConfirm} disabled={loading} className="flex-[2]">
             {loading ? "Booking…" : "Confirm & Book"}
           </Button>
         </div>

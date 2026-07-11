@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowDownLeft, ArrowUpRight, Receipt, Wallet as WalletIcon } from "lucide-react";
 import { getWallet, getWalletTransactions, topupWallet } from "@/lib/api/wallet";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api/client";
 
 export default function WalletPage() {
@@ -47,54 +51,75 @@ export default function WalletPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold">Wallet</h1>
-        <p className="text-neutral-500 text-sm">Balance and transaction history.</p>
+        <p className="text-ink-muted text-sm">Balance and transaction history.</p>
       </div>
 
-      <div className="rounded-2xl bg-emerald-600 text-white p-5">
-        <p className="text-sm opacity-80">Balance</p>
-        <p className="text-3xl font-bold">₹{wallet?.balance ?? "—"}</p>
+      <div className="rounded-3xl bg-gradient-to-br from-brand-from to-brand-to p-6 text-white shadow-lg shadow-indigo-600/20">
+        <div className="flex items-center gap-2 opacity-80 mb-1">
+          <WalletIcon size={15} strokeWidth={2.25} />
+          <p className="text-sm">Balance</p>
+        </div>
+        <p className="text-3xl font-bold">
+          {wallet ? `₹${wallet.balance}` : <span className="inline-block h-8 w-24 rounded-lg bg-white/20 animate-pulse" />}
+        </p>
       </div>
 
-      <form onSubmit={handleTopup} className="flex gap-2">
-        <input
-          type="number"
-          min="1"
-          placeholder="Amount"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        />
-        <Button type="submit" disabled={topupMutation.isPending}>
-          {topupMutation.isPending ? "Adding…" : "Top up"}
-        </Button>
-      </form>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      <Card>
+        <form onSubmit={handleTopup} className="flex gap-2">
+          <input
+            type="number"
+            min="1"
+            placeholder="Amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="flex-1 rounded-full border border-border bg-surface px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <Button type="submit" variant="gradient" pill disabled={topupMutation.isPending} className="px-6">
+            {topupMutation.isPending ? "Adding…" : "Top up"}
+          </Button>
+        </form>
+        {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+      </Card>
 
       <div>
-        <p className="text-sm font-semibold text-neutral-700 mb-2">Transactions</p>
-        {isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+        <p className="text-sm font-semibold mb-2">Transactions</p>
+        {isLoading && (
+          <div className="space-y-3">
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
+          </div>
+        )}
         {sorted && sorted.length === 0 && (
-          <p className="text-sm text-neutral-500">No transactions yet.</p>
+          <EmptyState icon={Receipt} title="No transactions yet" description="Top up your wallet to get started." />
         )}
         <div className="space-y-2">
-          {sorted?.map((tx) => (
-            <div
-              key={tx.tx_id}
-              className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-4 py-3"
-            >
-              <div>
-                <p className="text-sm font-medium text-neutral-900">{tx.reason}</p>
-                <p className="text-xs text-neutral-400">{new Date(tx.created_at).toLocaleString()}</p>
-              </div>
-              <p
-                className={`text-sm font-semibold ${
-                  tx.type === "credit" ? "text-emerald-600" : "text-red-600"
-                }`}
-              >
-                {tx.type === "credit" ? "+" : "−"}₹{tx.amount}
-              </p>
-            </div>
-          ))}
+          {sorted?.map((tx) => {
+            const isCredit = tx.type === "credit";
+            return (
+              <Card key={tx.tx_id}>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                      isCredit ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
+                    }`}
+                  >
+                    {isCredit ? (
+                      <ArrowDownLeft size={16} strokeWidth={2.25} />
+                    ) : (
+                      <ArrowUpRight size={16} strokeWidth={2.25} />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{tx.reason}</p>
+                    <p className="text-xs text-ink-muted">{new Date(tx.created_at).toLocaleString()}</p>
+                  </div>
+                  <p className={`text-sm font-semibold shrink-0 ${isCredit ? "text-emerald-600" : "text-red-600"}`}>
+                    {isCredit ? "+" : "−"}₹{tx.amount}
+                  </p>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </div>

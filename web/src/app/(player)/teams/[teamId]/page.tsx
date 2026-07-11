@@ -1,7 +1,9 @@
 "use client";
 
 import { use, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Star, Swords, UserPlus, Users2 } from "lucide-react";
 import {
   acceptOpponentChallenge,
   createOpponentChallenge,
@@ -13,8 +15,20 @@ import {
 } from "@/lib/api/teams";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSession } from "@/components/providers/SessionProvider";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api/client";
+import { getSportTheme, sportLabel } from "@/lib/sportTheme";
+
+const CHALLENGE_BADGE_VARIANT: Record<string, "confirmed" | "pending" | "cancelled" | "neutral"> = {
+  pending: "pending",
+  accepted: "confirmed",
+  rejected: "cancelled",
+  expired: "neutral",
+};
 
 export default function TeamDetailPage({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = use(params);
@@ -90,37 +104,63 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not reject challenge"),
   });
 
-  if (isLoading) return <p className="text-sm text-neutral-500">Loading…</p>;
-  if (!team) return <p className="text-sm text-neutral-500">Team not found.</p>;
+  if (isLoading) return <SkeletonCard />;
+  if (!team) return <EmptyState icon={Users2} title="Team not found" />;
+
+  const theme = getSportTheme(team.sport);
+  const Icon = theme.icon;
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold">{team.team_name}</h1>
-        <p className="text-neutral-500 text-sm">
-          {team.sport.replace("_", " ")} · {team.wins}W-{team.losses}L · rating {team.rating}
-        </p>
+      <div className="flex items-center gap-3">
+        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${theme.light}`}>
+          <Icon size={22} strokeWidth={2.25} />
+        </span>
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold truncate">{team.team_name}</h1>
+          <p className="text-ink-muted text-sm flex items-center gap-2 flex-wrap">
+            <span>{sportLabel(team.sport)}</span>
+            <span>·</span>
+            <span>
+              {team.wins}W-{team.losses}L
+            </span>
+            <span className="inline-flex items-center gap-1 text-amber-600 font-semibold">
+              <Star size={12} strokeWidth={2.5} fill="currentColor" />
+              {team.rating}
+            </span>
+          </p>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-2">
-        <p className="text-sm font-semibold text-neutral-700">Members ({team.total_members})</p>
-        {team.members.map((m) => (
-          <div key={m.uid} className="flex items-center justify-between text-sm">
-            <span className="text-neutral-700">
-              {m.display_name || m.uid} {m.uid === team.captain_uid && "(captain)"}
-            </span>
-            {(isCaptain || m.uid === session.uid) && m.uid !== team.captain_uid && (
-              <button
-                onClick={() => removeMutation.mutate(m.uid)}
-                className="text-xs text-red-600 hover:underline"
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        ))}
+      <Card className="space-y-3">
+        <p className="text-sm font-semibold">Members ({team.total_members})</p>
+        <div className="space-y-2">
+          {team.members.map((m) => (
+            <div key={m.uid} className="flex items-center justify-between">
+              <Link href={`/players/${m.uid}`} className="flex items-center gap-2.5 min-w-0 hover:opacity-80">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold text-ink-muted">
+                  {(m.display_name || m.uid).charAt(0).toUpperCase()}
+                </span>
+                <span className="text-sm truncate">
+                  {m.display_name || m.uid}
+                  {m.uid === team.captain_uid && (
+                    <span className="ml-1.5 text-xs font-semibold text-indigo-600">(captain)</span>
+                  )}
+                </span>
+              </Link>
+              {(isCaptain || m.uid === session.uid) && m.uid !== team.captain_uid && (
+                <button
+                  onClick={() => removeMutation.mutate(m.uid)}
+                  className="text-xs font-medium text-red-600 hover:underline shrink-0"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
 
         {isCaptain && (
           <form
@@ -128,31 +168,38 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
               e.preventDefault();
               inviteMutation.mutate();
             }}
-            className="flex gap-2 pt-2"
+            className="flex gap-2 pt-2 border-t border-border"
           >
             <input
               placeholder="Player uid"
               value={inviteUid}
               onChange={(e) => setInviteUid(e.target.value)}
               required
-              className="flex-1 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="flex-1 rounded-full border border-border bg-surface px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <input
               placeholder="Name"
               value={inviteName}
               onChange={(e) => setInviteName(e.target.value)}
               required
-              className="w-24 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-24 rounded-full border border-border bg-surface px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
-            <Button type="submit" disabled={inviteMutation.isPending} className="text-xs px-3 py-1.5">
+            <Button
+              type="submit"
+              variant="gradient"
+              pill
+              disabled={inviteMutation.isPending}
+              className="text-xs px-4 py-2 shrink-0 flex items-center gap-1"
+            >
+              <UserPlus size={13} strokeWidth={2.5} />
               Invite
             </Button>
           </form>
         )}
-      </div>
+      </Card>
 
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-3">
-        <p className="text-sm font-semibold text-neutral-700">Looking for opponent</p>
+      <Card className="space-y-3">
+        <p className="text-sm font-semibold">Looking for opponent</p>
 
         {isCaptain && (
           <form
@@ -167,22 +214,29 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
               value={challengeDate}
               onChange={(e) => setChallengeDate(e.target.value)}
               required
-              className="rounded-lg border border-neutral-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="rounded-full border border-border bg-surface px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <input
               type="time"
               value={challengeTime}
               onChange={(e) => setChallengeTime(e.target.value)}
               required
-              className="rounded-lg border border-neutral-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="rounded-full border border-border bg-surface px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <input
               type="number"
               value={numPlayers}
               onChange={(e) => setNumPlayers(e.target.value)}
-              className="rounded-lg border border-neutral-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="rounded-full border border-border bg-surface px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
-            <Button type="submit" disabled={createChallengeMutation.isPending} className="col-span-3 text-xs">
+            <Button
+              type="submit"
+              variant="gradient"
+              pill
+              disabled={createChallengeMutation.isPending}
+              className="col-span-3 text-xs flex items-center justify-center gap-1.5"
+            >
+              <Swords size={13} strokeWidth={2.5} />
               Post challenge
             </Button>
           </form>
@@ -190,33 +244,36 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
 
         <div className="space-y-2">
           {challenges?.map((c) => (
-            <div key={c.challenge_id} className="flex items-center justify-between text-sm">
-              <span className="text-neutral-700">
-                {c.date} {c.time} · {c.number_of_players} players · {c.status}
+            <div key={c.challenge_id} className="flex items-center justify-between text-sm rounded-xl bg-surface-muted/60 px-3 py-2.5">
+              <span className="text-foreground">
+                {c.date} {c.time} · {c.number_of_players} players
               </span>
-              {isCaptain && c.status === "pending" && c.from_team_id !== teamId && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => acceptMutation.mutate(c.challenge_id)}
-                    className="text-xs text-emerald-600 hover:underline"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => rejectMutation.mutate(c.challenge_id)}
-                    className="text-xs text-red-600 hover:underline"
-                  >
-                    Reject
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge variant={CHALLENGE_BADGE_VARIANT[c.status] ?? "neutral"}>{c.status}</Badge>
+                {isCaptain && c.status === "pending" && c.from_team_id !== teamId && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => acceptMutation.mutate(c.challenge_id)}
+                      className="text-xs font-medium text-emerald-600 hover:underline"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => rejectMutation.mutate(c.challenge_id)}
+                      className="text-xs font-medium text-red-600 hover:underline"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
           {challenges && challenges.length === 0 && (
-            <p className="text-sm text-neutral-500">No opponent challenges yet.</p>
+            <EmptyState icon={Swords} title="No opponent challenges yet" description="Post one above to find a match." />
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

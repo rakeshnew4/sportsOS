@@ -95,6 +95,8 @@ const SPORT_THEMES: Record<string, SportTheme> = {
   },
 };
 
+export const ALL_SPORTS = Object.keys(SPORT_THEMES);
+
 export function getSportTheme(sport: string | null | undefined): SportTheme {
   if (!sport) return DEFAULT_THEME;
   return SPORT_THEMES[sport.toLowerCase()] ?? DEFAULT_THEME;
@@ -102,4 +104,15 @@ export function getSportTheme(sport: string | null | undefined): SportTheme {
 
 export function sportLabel(sport: string): string {
   return sport.replace(/_/g, " ");
+}
+
+// Real photo fallbacks for venue cards when no cover_image_url is set. Only add an entry here once
+// there's an actual photo asset for that sport — otherwise the themed gradient banner is the fallback.
+const SPORT_FALLBACK_IMAGES: Record<string, string> = {
+  cricket: "/brand/sport-cricket.jpg",
+};
+
+export function getSportFallbackImage(sport: string | null | undefined): string | null {
+  if (!sport) return null;
+  return SPORT_FALLBACK_IMAGES[sport.toLowerCase()] ?? null;
 }

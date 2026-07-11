@@ -3,10 +3,16 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, Plus, Star, Users2 } from "lucide-react";
 import { createTeam, listMyTeams, listTeams } from "@/lib/api/teams";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SkeletonCard } from "@/components/ui/Skeleton";
+import { SportFilterChips } from "@/components/ui/SportFilterChips";
 import { ApiError } from "@/lib/api/client";
+import { getSportTheme, sportLabel } from "@/lib/sportTheme";
 
 export default function TeamsPage() {
   const queryClient = useQueryClient();
@@ -16,7 +22,10 @@ export default function TeamsPage() {
   const [sport, setSport] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const { data: myTeams } = useQuery({ queryKey: queryKeys.myTeams(), queryFn: listMyTeams });
+  const { data: myTeams, isLoading: myTeamsLoading } = useQuery({
+    queryKey: queryKeys.myTeams(),
+    queryFn: listMyTeams,
+  });
   const { data: allTeams, isLoading } = useQuery({
     queryKey: queryKeys.teams(sportFilter || undefined),
     queryFn: () => listTeams(sportFilter || undefined),
@@ -37,13 +46,25 @@ export default function TeamsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">Teams</h1>
-          <p className="text-neutral-500 text-sm">Your squads and teams to challenge.</p>
+          <p className="text-ink-muted text-sm">Your squads and teams to challenge.</p>
         </div>
-        <Button variant="secondary" onClick={() => setShowCreate((s) => !s)}>
-          {showCreate ? "Cancel" : "+ New team"}
+        <Button
+          variant={showCreate ? "secondary" : "gradient"}
+          pill
+          onClick={() => setShowCreate((s) => !s)}
+          className="shrink-0 flex items-center gap-1.5 text-sm px-4"
+        >
+          {showCreate ? (
+            "Cancel"
+          ) : (
+            <>
+              <Plus size={15} strokeWidth={2.5} />
+              New team
+            </>
+          )}
         </Button>
       </div>
 
@@ -55,73 +76,107 @@ export default function TeamsPage() {
             e.preventDefault();
             createMutation.mutate();
           }}
-          className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-3"
+          className="rounded-2xl border border-border bg-surface shadow-sm p-4 space-y-3"
         >
           <input
             placeholder="Team name"
             value={teamName}
             onChange={(e) => setTeamName(e.target.value)}
             required
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full rounded-full border border-border bg-surface px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
-          <input
-            placeholder="Sport"
-            value={sport}
-            onChange={(e) => setSport(e.target.value)}
-            required
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          <Button type="submit" disabled={createMutation.isPending} className="w-full">
+          <div>
+            <p className="text-xs font-semibold text-ink-muted mb-2">Sport</p>
+            <SportFilterChips value={sport} onChange={setSport} allowAll={false} />
+          </div>
+          <Button
+            type="submit"
+            variant="gradient"
+            pill
+            disabled={createMutation.isPending || !teamName || !sport}
+            className="w-full"
+          >
             {createMutation.isPending ? "Creating…" : "Create team"}
           </Button>
         </form>
       )}
 
       <div>
-        <p className="text-sm font-semibold text-neutral-700 mb-2">My teams</p>
-        <div className="space-y-2">
-          {myTeams?.map((team) => (
-            <Link
-              key={team.team_id}
-              href={`/teams/${team.team_id}`}
-              className="block rounded-xl border border-neutral-200 bg-white px-4 py-3 hover:border-neutral-300"
-            >
-              <p className="text-sm font-medium text-neutral-900">{team.team_name}</p>
-              <p className="text-xs text-neutral-400">
-                {team.sport.replace("_", " ")} · {team.total_members} members · {team.wins}W-{team.losses}L
-              </p>
-            </Link>
-          ))}
-          {myTeams && myTeams.length === 0 && (
-            <p className="text-sm text-neutral-500">You're not on a team yet.</p>
-          )}
+        <p className="text-sm font-semibold mb-2">My teams</p>
+        {myTeamsLoading && (
+          <div className="space-y-3">
+            <SkeletonCard />
+          </div>
+        )}
+        {myTeams && myTeams.length === 0 && (
+          <EmptyState icon={Users2} title="You're not on a team yet" description="Create one or browse teams below." />
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+          {myTeams?.map((team) => {
+            const theme = getSportTheme(team.sport);
+            const Icon = theme.icon;
+            return (
+              <Link key={team.team_id} href={`/teams/${team.team_id}`}>
+                <Card interactive>
+                  <div className="flex items-center gap-3">
+                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${theme.light}`}>
+                      <Icon size={19} strokeWidth={2.25} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold truncate">{team.team_name}</p>
+                      <p className="text-xs text-ink-muted mt-0.5">
+                        {sportLabel(team.sport)} · {team.total_members} members · {team.wins}W-{team.losses}L
+                      </p>
+                    </div>
+                    <ChevronRight size={18} className="text-ink-muted shrink-0" />
+                  </div>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       </div>
 
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-sm font-semibold text-neutral-700">Browse teams</p>
-          <input
-            placeholder="Filter by sport"
-            value={sportFilter}
-            onChange={(e) => setSportFilter(e.target.value)}
-            className="w-40 rounded-lg border border-neutral-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-        {isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
-        <div className="space-y-2">
-          {allTeams?.map((team) => (
-            <Link
-              key={team.team_id}
-              href={`/teams/${team.team_id}`}
-              className="block rounded-xl border border-neutral-200 bg-white px-4 py-3 hover:border-neutral-300"
-            >
-              <p className="text-sm font-medium text-neutral-900">{team.team_name}</p>
-              <p className="text-xs text-neutral-400">
-                {team.sport.replace("_", " ")} · captain {team.captain_name} · rating {team.rating}
-              </p>
-            </Link>
-          ))}
+        <p className="text-sm font-semibold mb-2">Browse teams</p>
+        <SportFilterChips value={sportFilter} onChange={setSportFilter} />
+        {isLoading && (
+          <div className="space-y-3 mt-3">
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        )}
+        {allTeams && allTeams.length === 0 && (
+          <div className="mt-3">
+            <EmptyState icon={Users2} title="No teams found" description="Try a different sport." />
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 mt-3">
+          {allTeams?.map((team) => {
+            const theme = getSportTheme(team.sport);
+            const Icon = theme.icon;
+            return (
+              <Link key={team.team_id} href={`/teams/${team.team_id}`}>
+                <Card interactive>
+                  <div className="flex items-center gap-3">
+                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${theme.light}`}>
+                      <Icon size={19} strokeWidth={2.25} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold truncate">{team.team_name}</p>
+                      <p className="text-xs text-ink-muted mt-0.5">
+                        {sportLabel(team.sport)} · captain {team.captain_name}
+                      </p>
+                    </div>
+                    <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-amber-600 bg-amber-50 rounded-full px-2.5 py-1">
+                      <Star size={12} strokeWidth={2.5} fill="currentColor" />
+                      {team.rating}
+                    </span>
+                  </div>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

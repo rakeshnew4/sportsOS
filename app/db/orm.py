@@ -39,6 +39,7 @@ class User(Base):
     display_name = Column(String, nullable=True)
     phone = Column(String, unique=True, nullable=False, index=True)
     is_player = Column(Boolean, nullable=False, default=False)
+    skill_levels = Column(JSONB, nullable=False, default=dict)   # {sport: "beginner"|"intermediate"|"advanced"|"pro"}
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
@@ -75,6 +76,12 @@ class Tenant(Base):
     geo_lat = Column(Float, nullable=False)
     geo_lng = Column(Float, nullable=False)
     sports = Column(JSONB, nullable=False, default=list)   # list[str]
+    description = Column(Text, nullable=True)
+    address = Column(String, nullable=True)
+    amenities = Column(JSONB, nullable=False, default=list)   # list[str]
+    cover_image_url = Column(String, nullable=True)
+    upi_id = Column(String, nullable=True)          # For direct pay-at-venue bookings
+    booking_phone = Column(String, nullable=True)   # WhatsApp/call contact for coordinating a booking
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     courts = relationship("Court", back_populates="tenant", cascade="all, delete-orphan")
@@ -98,6 +105,7 @@ class Court(Base):
     close_time = Column(String, nullable=False)   # "HH:MM"
     is_active = Column(Boolean, nullable=False, default=True)
     dynamic_pricing_enabled = Column(Boolean, nullable=False, default=False)
+    min_players = Column(Integer, nullable=True)  # Queue threshold to auto-confirm a booking; null = sport default
 
     tenant = relationship("Tenant", back_populates="courts")
     bookings = relationship("Booking", back_populates="court")
@@ -120,6 +128,7 @@ class Booking(Base):
     price = Column(Float, nullable=False)
     status = Column(String, nullable=False, default="pending_payment", index=True)
     created_by = Column(String, ForeignKey("users.uid", ondelete="RESTRICT"), nullable=False, index=True)
+    created_by_name = Column(String, nullable=True)
     team_id = Column(String, nullable=True)
     team_name = Column(String, nullable=True)
     is_joinable = Column(Boolean, nullable=False, default=False)

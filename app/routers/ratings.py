@@ -35,6 +35,12 @@ class PlayerRatingsStats(BaseModel):
     rating_distribution: dict[int, int]
 
 
+class VenueRatingsStats(BaseModel):
+    tenant_id: str
+    avg_rating: float
+    total_ratings: int
+
+
 @router.post("/", status_code=201)
 def create_rating(
     req: RatingCreate,
@@ -93,6 +99,15 @@ def get_player_ratings_stats(uid: str, db: Session = Depends(get_db)) -> PlayerR
     for v in values:
         dist[v] = dist.get(v, 0) + 1
     return PlayerRatingsStats(uid=uid, avg_rating=round(avg, 2), total_ratings=len(values), rating_distribution=dist)
+
+
+@router.get("/venues/{tenant_id}/stats")
+def get_venue_ratings_stats(tenant_id: str, db: Session = Depends(get_db)) -> VenueRatingsStats:
+    ratings = db.query(Rating).filter(Rating.tenant_id == tenant_id).all()
+    if not ratings:
+        return VenueRatingsStats(tenant_id=tenant_id, avg_rating=0.0, total_ratings=0)
+    avg = sum(r.rating for r in ratings) / len(ratings)
+    return VenueRatingsStats(tenant_id=tenant_id, avg_rating=round(avg, 2), total_ratings=len(ratings))
 
 
 @router.get("/players/{uid}/reviews")

@@ -3,17 +3,19 @@
 import { use, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, IndianRupee, LayoutGrid } from "lucide-react";
+import { Clock, IndianRupee, LayoutGrid, MapPin, Star } from "lucide-react";
 import { getVenue, listCourts } from "@/lib/api/venues";
+import { getVenueRatingsStats } from "@/lib/api/ratings";
 import { queryKeys } from "@/lib/queryKeys";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton, SkeletonCard } from "@/components/ui/Skeleton";
-import { getSportTheme, sportLabel } from "@/lib/sportTheme";
+import { SportFilterChips } from "@/components/ui/SportFilterChips";
+import { getSportFallbackImage, getSportTheme, sportLabel } from "@/lib/sportTheme";
 
 export default function VenueDetailPage({ params }: { params: Promise<{ tenantId: string }> }) {
   const { tenantId } = use(params);
-  const [sportFilter, setSportFilter] = useState<string | null>(null);
+  const [sportFilter, setSportFilter] = useState("");
 
   const { data: venue } = useQuery({
     queryKey: queryKeys.venue(tenantId),
@@ -23,35 +25,56 @@ export default function VenueDetailPage({ params }: { params: Promise<{ tenantId
     queryKey: queryKeys.courts(tenantId),
     queryFn: () => listCourts(tenantId),
   });
+  const { data: ratings } = useQuery({
+    queryKey: queryKeys.venueRatingsStats(tenantId),
+    queryFn: () => getVenueRatingsStats(tenantId),
+  });
 
   const visibleCourts = courts?.filter((c) => !sportFilter || c.sport === sportFilter);
+  const primaryTheme = getSportTheme(venue?.sports[0]);
+  const bgImage = venue
+    ? venue.cover_image_url || getSportFallbackImage(venue.sports[0]) || "/brand/venues-arena.jpg"
+    : null;
 
   return (
     <div className="space-y-4">
-      <div>
-        {venue ? <h1 className="text-xl font-bold">{venue.name}</h1> : <Skeleton className="h-6 w-40" />}
-        <p className="text-ink-muted text-sm mt-1">{venue?.city}</p>
-      </div>
+      {venue ? (
+        <div
+          className={`rounded-3xl overflow-hidden ${bgImage ? "" : `bg-gradient-to-br ${primaryTheme.gradient}`}`}
+          style={bgImage ? { backgroundImage: `url(${bgImage})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+        >
+          <div className={`p-5 ${bgImage ? "bg-black/35 backdrop-blur-[1px]" : ""}`}>
+            <h1 className="text-xl font-bold text-white">{venue.name}</h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-white/85">
+              <span className="flex items-center gap-1">
+                <MapPin size={13} /> {venue.address ? `${venue.address}, ${venue.city}` : venue.city}
+              </span>
+              {ratings && ratings.total_ratings > 0 && (
+                <span className="flex items-center gap-1">
+                  <Star size={13} strokeWidth={2.5} className="fill-amber-400 text-amber-400" />
+                  {ratings.avg_rating} ({ratings.total_ratings})
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <Skeleton className="h-28 rounded-3xl" />
+      )}
 
-      {venue && (
-        <div className="flex flex-wrap gap-2">
-          {venue.sports.map((s) => {
-            const theme = getSportTheme(s);
-            const active = sportFilter === s;
-            return (
-              <button
-                key={s}
-                onClick={() => setSportFilter(active ? null : s)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${
-                  active ? `${theme.solid} text-white` : theme.light
-                }`}
-              >
-                {sportLabel(s)}
-              </button>
-            );
-          })}
+      {venue?.description && <p className="text-sm text-ink-muted">{venue.description}</p>}
+
+      {venue && venue.amenities.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {venue.amenities.map((a) => (
+            <span key={a} className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-ink-muted">
+              {a}
+            </span>
+          ))}
         </div>
       )}
+
+      {venue && <SportFilterChips value={sportFilter} onChange={setSportFilter} sports={venue.sports} />}
 
       {isLoading && (
         <div className="space-y-3">

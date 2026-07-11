@@ -8,6 +8,8 @@ from app.models.court import CourtCreateRequest, CourtResponse, CourtUpdateReque
 
 
 def create_court(db: Session, tenant_id: str, req: CourtCreateRequest) -> CourtResponse:
+    if req.min_players is not None and req.min_players < 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="min_players must be at least 1")
     court = Court(
         court_id=uuid.uuid4().hex,
         tenant_id=tenant_id,
@@ -18,6 +20,7 @@ def create_court(db: Session, tenant_id: str, req: CourtCreateRequest) -> CourtR
         close_time=req.close_time,
         is_active=True,
         dynamic_pricing_enabled=req.dynamic_pricing_enabled,
+        min_players=req.min_players,
     )
     db.add(court)
     db.commit()
@@ -49,6 +52,8 @@ def update_court(db: Session, tenant_id: str, court_id: str, req: CourtUpdateReq
     )
     if not court:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Court not found")
+    if req.min_players is not None and req.min_players < 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="min_players must be at least 1")
     updates = {k: v for k, v in req.model_dump(exclude_unset=True).items() if v is not None}
     for key, value in updates.items():
         setattr(court, key, value)
@@ -68,4 +73,5 @@ def _to_response(c: Court) -> CourtResponse:
         close_time=c.close_time,
         is_active=c.is_active,
         dynamic_pricing_enabled=c.dynamic_pricing_enabled,
+        min_players=c.min_players,
     )

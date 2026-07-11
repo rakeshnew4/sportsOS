@@ -4,7 +4,8 @@ from pydantic import BaseModel
 from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user, require_venue_access
 from app.models.booking import AvailabilityResponse, BookingCreateRequest, BookingResponse, SlotResponse
-from app.services import booking_service, invite_service
+from app.models.matchmaking import MatchRequestResponse
+from app.services import booking_service, invite_service, matchmaking_service
 
 router = APIRouter(tags=["bookings"])
 
@@ -102,6 +103,14 @@ def list_my_bookings(
     return booking_service.list_my_bookings(db, user.uid)
 
 
+@router.get("/players/me/match-requests")
+def list_my_match_requests(
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[MatchRequestResponse]:
+    return matchmaking_service.list_my_match_requests(db, user.uid)
+
+
 @router.patch("/venues/{tenant_id}/bookings/{booking_id}/cancel")
 def cancel_booking(
     tenant_id: str,
@@ -110,6 +119,17 @@ def cancel_booking(
     db: Session = Depends(get_db),
 ) -> BookingResponse:
     return booking_service.cancel_booking(db, tenant_id, booking_id, user.uid, user.can_manage(tenant_id))
+
+
+@router.patch("/venues/{tenant_id}/bookings/{booking_id}/confirm")
+def confirm_booking(
+    tenant_id: str,
+    booking_id: str,
+    user: CurrentUser = Depends(require_venue_access),
+    db: Session = Depends(get_db),
+) -> BookingResponse:
+    """Venue staff confirms a pay-at-venue booking once payment has been received."""
+    return booking_service.confirm_booking(db, tenant_id, booking_id)
 
 
 @router.post("/venues/{tenant_id}/bookings/{booking_id}/checkin")

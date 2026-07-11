@@ -26,11 +26,35 @@ export interface CreateVenuePayload {
   city: string;
   geo: { lat: number; lng: number };
   sports: string[];
+  description?: string;
+  address?: string;
+  amenities?: string[];
+  cover_image_url?: string;
+  upi_id?: string;
+  booking_phone?: string;
 }
 
 export function createVenue(payload: CreateVenuePayload) {
   return apiFetch<VenueResponse>(`/venues`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface UpdateVenuePayload {
+  name?: string;
+  city?: string;
+  description?: string;
+  address?: string;
+  amenities?: string[];
+  cover_image_url?: string;
+  upi_id?: string;
+  booking_phone?: string;
+}
+
+export function updateVenue(tenantId: string, payload: UpdateVenuePayload) {
+  return apiFetch<VenueResponse>(`/venues/${tenantId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
@@ -42,6 +66,7 @@ export interface CreateCourtPayload {
   open_time: string;
   close_time: string;
   dynamic_pricing_enabled?: boolean;
+  min_players?: number;
 }
 
 export function createCourt(tenantId: string, payload: CreateCourtPayload) {
@@ -57,6 +82,7 @@ export interface UpdateCourtPayload {
   open_time?: string;
   close_time?: string;
   is_active?: boolean;
+  min_players?: number;
 }
 
 export function updateCourt(tenantId: string, courtId: string, payload: UpdateCourtPayload) {
