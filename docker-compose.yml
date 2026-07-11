@@ -36,14 +36,11 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - API_BASE_URL=http://backend:8000
-    volumes:
-      - ./web:/app
-      - /app/node_modules
-      - /app/.next
     depends_on:
       - backend
 
