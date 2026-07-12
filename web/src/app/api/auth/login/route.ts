@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { SESSION_COOKIE } from "@/lib/session";
+import { isSecureRequest, SESSION_COOKIE } from "@/lib/session";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
 
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    secure: process.env.NODE_ENV === "production",
+    secure: isSecureRequest(req),
   });
 
   return NextResponse.json(data);
