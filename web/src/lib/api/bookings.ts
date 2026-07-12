@@ -46,6 +46,20 @@ export function confirmBooking(tenantId: string, bookingId: string) {
   });
 }
 
+export interface RescheduleBookingPayload {
+  date: string;
+  start_time: string;
+  end_time: string;
+  court_id?: string;
+}
+
+export function rescheduleBooking(tenantId: string, bookingId: string, payload: RescheduleBookingPayload) {
+  return apiFetch<BookingResponse>(`/venues/${tenantId}/bookings/${bookingId}/reschedule`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function openToCommunity(tenantId: string, bookingId: string, slotsOpen: number) {
   return apiFetch<BookingResponse>(`/venues/${tenantId}/bookings/${bookingId}/open-to-community`, {
     method: "PATCH",

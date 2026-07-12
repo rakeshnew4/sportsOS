@@ -28,3 +28,10 @@ export function updateNotificationPreferences(payload: NotificationPreferences) 
     body: JSON.stringify(payload),
   });
 }
+
+export function broadcastVenueNotification(tenantId: string, payload: { title: string; body: string }) {
+  return apiFetch<{ recipient_count: number }>(`/venues/${tenantId}/notifications/broadcast`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

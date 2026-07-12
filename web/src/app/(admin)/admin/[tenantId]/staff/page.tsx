@@ -6,6 +6,7 @@ import { addStaff, listStaff, removeStaff } from "@/lib/api/staff";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSession } from "@/components/providers/SessionProvider";
 import { Button } from "@/components/ui/Button";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { ApiError } from "@/lib/api/client";
 
 export default function StaffPage({ params }: { params: Promise<{ tenantId: string }> }) {
@@ -63,7 +64,7 @@ export default function StaffPage({ params }: { params: Promise<{ tenantId: stri
       )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+      {isLoading && <FootballSpinner />}
 
       <div className="space-y-2">
         {staff?.map((member) => (

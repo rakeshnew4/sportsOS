@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createCourt, listCourts, updateCourt } from "@/lib/api/venues";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/Button";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { ApiError } from "@/lib/api/client";
 import type { CourtResponse } from "@/lib/types";
 
@@ -132,7 +133,7 @@ export default function CourtsPage({ params }: { params: Promise<{ tenantId: str
         </form>
       )}
 
-      {isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+      {isLoading && <FootballSpinner />}
 
       {!isLoading && courts?.length === 0 && !showCreate && (
         <div className="rounded-xl border border-dashed border-neutral-300 px-4 py-6 text-center">

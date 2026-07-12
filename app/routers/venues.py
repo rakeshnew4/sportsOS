@@ -164,4 +164,29 @@ def venue_revenue_analytics(
     )
 
 
+class BroadcastNotificationRequest(BaseModel):
+    title: str
+    body: str
+
+
+class BroadcastNotificationResponse(BaseModel):
+    recipient_count: int
+
+
+@router.post("/{tenant_id}/notifications/broadcast")
+def broadcast_notification(
+    tenant_id: str,
+    req: BroadcastNotificationRequest,
+    user: CurrentUser = Depends(require_venue_access),
+    db: Session = Depends(get_db),
+) -> BroadcastNotificationResponse:
+    """Venue owner/staff send an announcement to everyone who's booked at this venue."""
+    from app.services import notification_service
+
+    venue = venue_service.get_venue(db, tenant_id)
+    player_uids = booking_service.get_venue_player_uids(db, tenant_id)
+    count = notification_service.notify_venue_announcement(db, tenant_id, player_uids, venue.name, req.title, req.body)
+    return BroadcastNotificationResponse(recipient_count=count)
+
+
 

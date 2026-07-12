@@ -21,6 +21,7 @@ import { useSession } from "@/components/providers/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { ApiError } from "@/lib/api/client";
 import { getSportTheme, sportLabel } from "@/lib/sportTheme";
 import { toISODate } from "@/lib/date";
@@ -168,7 +169,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
     });
   }
 
-  if (isLoading) return <p className="text-sm text-ink-muted">Loading…</p>;
+  if (isLoading) return <FootballSpinner />;
   if (!booking) return <p className="text-sm text-ink-muted">Booking not found.</p>;
 
   const theme = getSportTheme(booking.sport);

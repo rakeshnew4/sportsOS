@@ -6,7 +6,14 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.orm import Booking, BookingParticipant, User
-from app.models.booking import AvailabilityResponse, BookingCreateRequest, BookingResponse, SlotResponse, TimeRange
+from app.models.booking import (
+    AvailabilityResponse,
+    BookingCreateRequest,
+    BookingRescheduleRequest,
+    BookingResponse,
+    SlotResponse,
+    TimeRange,
+)
 from app.services.court_service import get_court
 
 ACTIVE_STATUSES = ("pending_payment", "confirmed")
@@ -111,20 +118,24 @@ def get_slots(db: Session, tenant_id: str, court_id: str, date: str, granularity
 
 
 def slot_overlaps_existing(
-    db: Session, tenant_id: str, court_id: str, date: str, start_time: str, end_time: str
+    db: Session,
+    tenant_id: str,
+    court_id: str,
+    date: str,
+    start_time: str,
+    end_time: str,
+    exclude_booking_id: str | None = None,
 ) -> bool:
     start_min, end_min = to_minutes(start_time), to_minutes(end_time)
-    existing = (
-        db.query(Booking)
-        .filter(
-            Booking.tenant_id == tenant_id,
-            Booking.court_id == court_id,
-            Booking.date == date,
-            Booking.status.in_(list(ACTIVE_STATUSES)),
-        )
-        .all()
+    query = db.query(Booking).filter(
+        Booking.tenant_id == tenant_id,
+        Booking.court_id == court_id,
+        Booking.date == date,
+        Booking.status.in_(list(ACTIVE_STATUSES)),
     )
-    for b in existing:
+    if exclude_booking_id:
+        query = query.filter(Booking.booking_id != exclude_booking_id)
+    for b in query.all():
         if start_min < to_minutes(b.end_time) and end_min > to_minutes(b.start_time):
             return True
     return False
@@ -255,6 +266,82 @@ def confirm_booking(db: Session, tenant_id: str, booking_id: str) -> BookingResp
     db.commit()
     db.refresh(booking)
     return booking_to_response(booking)
+
+
+def reschedule_booking(
+    db: Session, tenant_id: str, booking_id: str, req: BookingRescheduleRequest
+) -> BookingResponse:
+    """Venue staff moves a booking to a new date/time (and optionally a different court)."""
+    booking = get_booking(db, tenant_id, booking_id)
+    if booking.status in ("completed", "cancelled"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Booking already {booking.status}")
+
+    court_id = req.court_id or booking.court_id
+    court = get_court(db, tenant_id, court_id)
+    if not court.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Court is not active")
+
+    start_min, end_min = to_minutes(req.start_time), to_minutes(req.end_time)
+    if end_min <= start_min:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_time must be after start_time")
+    if (end_min - start_min) < 60:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Minimum booking duration is 1 hour")
+    if start_min < to_minutes(court.open_time) or end_min > to_minutes(court.close_time):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Requested time is outside court operating hours"
+        )
+    if slot_overlaps_existing(
+        db, tenant_id, court_id, req.date, req.start_time, req.end_time, exclude_booking_id=booking_id
+    ):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot overlaps an existing booking")
+
+    price = round(court.hourly_price * ((end_min - start_min) / 60), 2)
+
+    booking.court_id = court_id
+    booking.sport = court.sport
+    booking.date = req.date
+    booking.start_time = req.start_time
+    booking.end_time = req.end_time
+    booking.price = price
+    db.commit()
+    db.refresh(booking)
+
+    try:
+        from app.services import notification_service
+        recipients = {booking.created_by} | {
+            bp.uid for bp in db.query(BookingParticipant).filter(BookingParticipant.booking_id == booking_id).all()
+        }
+        for uid in recipients:
+            notification_service.record_notification(
+                db,
+                uid,
+                "booking_rescheduled",
+                "Your booking was rescheduled",
+                f"{booking.tenant_name or 'Venue'} moved your {booking.sport.replace('_', ' ')} booking to "
+                f"{req.date} {req.start_time}–{req.end_time}",
+                {"booking_id": booking_id, "tenant_id": tenant_id},
+            )
+        db.commit()
+    except Exception:
+        pass
+
+    return booking_to_response(booking)
+
+
+def get_venue_player_uids(db: Session, tenant_id: str) -> list[str]:
+    """Every player who has (or had) a booking at this venue — creators and participants alike."""
+    creators = {
+        row[0] for row in db.query(Booking.created_by).filter(Booking.tenant_id == tenant_id).distinct().all()
+    }
+    participants = {
+        row[0]
+        for row in db.query(BookingParticipant.uid)
+        .join(Booking, Booking.booking_id == BookingParticipant.booking_id)
+        .filter(Booking.tenant_id == tenant_id)
+        .distinct()
+        .all()
+    }
+    return list(creators | participants)
 
 
 def checkin_player(db: Session, tenant_id: str, booking_id: str, player_uid: str, requester_uid: str) -> dict:

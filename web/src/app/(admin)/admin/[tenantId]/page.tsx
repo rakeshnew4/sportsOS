@@ -4,8 +4,10 @@ import { use, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getVenueOverview } from "@/lib/api/kpis";
 import { getVenue, updateVenue } from "@/lib/api/venues";
+import { broadcastVenueNotification } from "@/lib/api/notifications";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/Button";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { ApiError } from "@/lib/api/client";
 import type { VenueKPIScope } from "@/lib/types";
 
@@ -98,6 +100,69 @@ function PaymentInfoForm({
   );
 }
 
+function AnnouncementCard({ tenantId }: { tenantId: string }) {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [sentCount, setSentCount] = useState<number | null>(null);
+
+  const sendMutation = useMutation({
+    mutationFn: () => broadcastVenueNotification(tenantId, { title: title.trim(), body: body.trim() }),
+    onSuccess: (res) => {
+      setError(null);
+      setSentCount(res.recipient_count);
+      setTitle("");
+      setBody("");
+    },
+    onError: (err) => {
+      setSentCount(null);
+      setError(err instanceof ApiError ? err.message : "Could not send announcement");
+    },
+  });
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        setSentCount(null);
+        sendMutation.mutate();
+      }}
+      className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-3"
+    >
+      <div>
+        <p className="text-sm font-semibold text-neutral-900">Send an announcement</p>
+        <p className="text-xs text-neutral-500 mt-0.5">
+          Goes out to everyone who has ever booked at this venue — court closures, promos, reminders.
+        </p>
+      </div>
+      <input
+        placeholder="Title, e.g. Court closed this Sunday"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        required
+        className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      />
+      <textarea
+        placeholder="Message"
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        required
+        rows={2}
+        className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      />
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {sentCount !== null && (
+        <p className="text-xs text-emerald-600">
+          Sent to {sentCount} {sentCount === 1 ? "player" : "players"}.
+        </p>
+      )}
+      <Button type="submit" variant="secondary" disabled={sendMutation.isPending} className="text-xs px-3 py-1.5">
+        {sendMutation.isPending ? "Sending…" : "Send"}
+      </Button>
+    </form>
+  );
+}
+
 export default function VenueOverviewPage({ params }: { params: Promise<{ tenantId: string }> }) {
   const { tenantId } = use(params);
   const [scope, setScope] = useState<VenueKPIScope>("today");
@@ -127,8 +192,9 @@ export default function VenueOverviewPage({ params }: { params: Promise<{ tenant
       </div>
 
       <PaymentInfoCard tenantId={tenantId} />
+      <AnnouncementCard tenantId={tenantId} />
 
-      {isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+      {isLoading && <FootballSpinner />}
 
       {kpi && (
         <div className="space-y-4">

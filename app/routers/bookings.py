@@ -3,7 +3,13 @@ from pydantic import BaseModel
 
 from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user, require_venue_access
-from app.models.booking import AvailabilityResponse, BookingCreateRequest, BookingResponse, SlotResponse
+from app.models.booking import (
+    AvailabilityResponse,
+    BookingCreateRequest,
+    BookingRescheduleRequest,
+    BookingResponse,
+    SlotResponse,
+)
 from app.models.matchmaking import MatchRequestResponse
 from app.services import booking_service, invite_service, matchmaking_service
 
@@ -130,6 +136,18 @@ def confirm_booking(
 ) -> BookingResponse:
     """Venue staff confirms a pay-at-venue booking once payment has been received."""
     return booking_service.confirm_booking(db, tenant_id, booking_id)
+
+
+@router.patch("/venues/{tenant_id}/bookings/{booking_id}/reschedule")
+def reschedule_booking(
+    tenant_id: str,
+    booking_id: str,
+    req: BookingRescheduleRequest,
+    user: CurrentUser = Depends(require_venue_access),
+    db: Session = Depends(get_db),
+) -> BookingResponse:
+    """Venue staff moves a booking to a new date/time, optionally a different court."""
+    return booking_service.reschedule_booking(db, tenant_id, booking_id, req)
 
 
 @router.post("/venues/{tenant_id}/bookings/{booking_id}/checkin")

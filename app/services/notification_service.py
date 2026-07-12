@@ -20,6 +20,8 @@ NotificationType = Literal[
     "friend_activity",
     "match_formed",
     "match_invite",
+    "booking_rescheduled",
+    "venue_announcement",
 ]
 
 
@@ -159,3 +161,14 @@ def notify_match_formed(
     data = {"booking_id": booking_id, "sport": sport}
     for player_uid in matched_uids:
         record_notification(db, player_uid, "match_formed", title, body, data)
+
+
+def notify_venue_announcement(
+    db: Session, tenant_id: str, player_uids: list[str], venue_name: str, title: str, body: str
+) -> int:
+    """Venue owner/staff broadcast to everyone who's booked there — court closures, promos, etc."""
+    data = {"tenant_id": tenant_id}
+    for player_uid in player_uids:
+        record_notification(db, player_uid, "venue_announcement", f"{venue_name}: {title}", body, data)
+    db.commit()
+    return len(player_uids)

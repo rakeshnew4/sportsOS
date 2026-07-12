@@ -13,6 +13,13 @@ class BookingCreateRequest(BaseModel):
     team_name: str | None = None  # Optional team name; auto-generated if not provided
 
 
+class BookingRescheduleRequest(BaseModel):
+    date: str  # "YYYY-MM-DD"
+    start_time: str  # "HH:MM"
+    end_time: str  # "HH:MM"
+    court_id: str | None = None  # Move to a different court on the same venue; same court if omitted
+
+
 class BookingResponse(BaseModel):
     booking_id: str
     tenant_id: str
