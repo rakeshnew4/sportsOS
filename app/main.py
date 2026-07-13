@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.database import create_all_tables
-from app.routers import analytics, auth, bookings, courts, invites, kpis, matches, matchmaking, notifications, players, ratings, teams, rewards, venues, wallet, venue_staff, waitlist
+from app.routers import analytics, auth, bookings, courts, invites, kpis, matches, matchmaking, notifications, players, ratings, realtime, teams, rewards, venues, wallet, venue_staff, waitlist
 
 
 @asynccontextmanager
@@ -41,6 +41,7 @@ app.include_router(kpis.router)
 app.include_router(teams.router)
 app.include_router(rewards.router)
 app.include_router(invites.router)
+app.include_router(realtime.router)
 
 
 @app.get("/health")

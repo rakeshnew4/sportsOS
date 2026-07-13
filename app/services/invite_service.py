@@ -21,7 +21,7 @@ from app.db.orm import (
     Tenant,
     User,
 )
-from app.services import notification_service, team_service
+from app.services import notification_service, realtime_service, team_service
 
 
 def _display_name(db: Session, uid: str) -> str:
@@ -205,6 +205,7 @@ def send_invites(db: Session, tenant_id: str, booking_id: str, from_uid: str, in
     db.commit()
     for invite in created:
         db.refresh(invite)
+        realtime_service.mirror_invite_status(invite)
     return created
 
 
@@ -222,6 +223,7 @@ def respond_to_invite(db: Session, invite_id: str, to_uid: str, accept: bool) ->
     if not accept:
         invite.status = "declined"
         db.commit()
+        realtime_service.mirror_invite_status(invite)
         return {"success": True, "status": "declined"}
 
     booking = db.query(Booking).filter(Booking.booking_id == invite.booking_id).first()
@@ -244,6 +246,8 @@ def respond_to_invite(db: Session, invite_id: str, to_uid: str, accept: bool) ->
 
     invite.status = "accepted"
     db.commit()
+    realtime_service.mirror_invite_status(invite)
+    realtime_service.mirror_match_state(db, booking.tenant_id, booking.booking_id)
     return {"success": True, "status": "accepted", "booking_id": booking.booking_id}
 
 

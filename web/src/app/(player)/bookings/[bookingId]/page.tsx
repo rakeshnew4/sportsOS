@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/waitlist";
 import { createRating } from "@/lib/api/ratings";
 import { getInviteCandidates, sendInvites } from "@/lib/api/invites";
+import { useMatchLive } from "@/lib/realtime/useMatchLive";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSession } from "@/components/providers/SessionProvider";
 import { Button } from "@/components/ui/Button";
@@ -51,6 +52,8 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
     queryFn: () => listParticipants(tenantId!, bookingId),
     enabled: !!tenantId,
   });
+
+  useMatchLive(tenantId, bookingId);
 
   function invalidateBooking() {
     queryClient.invalidateQueries({ queryKey: queryKeys.myBookings() });
@@ -298,7 +301,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ bookin
 
           {inviteOpen && (
             <>
-              {candidatesLoading && <p className="text-xs text-ink-muted">Finding players…</p>}
+              {candidatesLoading && <FootballSpinner label="Finding players…" />}
               {invitesSent && (
                 <p className="text-xs text-emerald-600">Invites sent! They&apos;ll show up in the players&apos; notifications.</p>
               )}

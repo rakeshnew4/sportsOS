@@ -317,6 +317,20 @@ class Notification(Base):
     user = relationship("User", back_populates="notifications")
 
 
+class DeviceToken(Base):
+    """FCM push-notification device tokens registered by a user's web/Android client."""
+    __tablename__ = "device_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uid = Column(String, ForeignKey("users.uid", ondelete="CASCADE"), nullable=False, index=True)
+    platform = Column(String, nullable=False)  # "web" | "android"
+    token = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    last_seen_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (UniqueConstraint("uid", "token", name="uq_device_token"),)
+
+
 # ---------------------------------------------------------------------------
 # Rewards & Referrals
 # ---------------------------------------------------------------------------

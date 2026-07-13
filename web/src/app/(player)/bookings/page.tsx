@@ -10,7 +10,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SkeletonCard } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { getSportTheme, sportLabel } from "@/lib/sportTheme";
 import { ApiError } from "@/lib/api/client";
 import type { MatchRequestResponse } from "@/lib/types";
@@ -64,12 +64,7 @@ function MyBookings() {
 
   return (
     <div className="space-y-4">
-      {isLoading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-      )}
+      {isLoading && <FootballSpinner />}
       {sorted && sorted.length === 0 && (
         <EmptyState icon={CalendarX2} title="No bookings yet" description="Go book a court to get started." />
       )}
@@ -130,12 +125,7 @@ function MyQueue({ requests }: { requests: MatchRequestResponse[] | undefined })
     <div className="space-y-3">
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      {!requests && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-      )}
+      {!requests && <FootballSpinner />}
       {visible && visible.length === 0 && (
         <EmptyState
           icon={Users2}

@@ -6,12 +6,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getCourt, listCourts } from "@/lib/api/venues";
 import { getSlots, createBooking } from "@/lib/api/bookings";
 import { suggestTeamNames } from "@/lib/api/teams";
+import { useSlotsLive } from "@/lib/realtime/useSlotsLive";
 import { queryKeys } from "@/lib/queryKeys";
 import { toISODate } from "@/lib/date";
 import { DateStrip } from "@/components/booking/DateStrip";
 import { SlotGrid } from "@/components/booking/SlotGrid";
 import { BookingSummary } from "@/components/booking/BookingSummary";
 import { ApiError } from "@/lib/api/client";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { getSportTheme, sportLabel } from "@/lib/sportTheme";
 import { IndianRupee } from "lucide-react";
@@ -59,6 +61,8 @@ export default function BookCourtPage({
     queryKey: queryKeys.slots(tenantId, courtId, date),
     queryFn: () => getSlots(tenantId, courtId, date),
   });
+
+  useSlotsLive(tenantId, courtId, date);
 
   useEffect(() => {
     if (!teamName && nameSuggestions?.suggestions?.length) {
@@ -165,13 +169,7 @@ export default function BookCourtPage({
 
       <DateStrip selected={date} onSelect={handleSelectDate} />
 
-      {isLoading && (
-        <div className="grid grid-cols-4 gap-2">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-9" />
-          ))}
-        </div>
-      )}
+      {isLoading && <FootballSpinner />}
       {slots && slots.length === 0 && (
         <p className="text-sm text-ink-muted">No slots available for this date.</p>
       )}

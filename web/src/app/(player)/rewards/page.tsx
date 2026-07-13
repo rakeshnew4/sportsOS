@@ -15,7 +15,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { ApiError } from "@/lib/api/client";
 
 const LEADERBOARDS: { kind: LeaderboardKind; label: string }[] = [
@@ -44,7 +44,7 @@ export default function RewardsPage() {
     queryFn: getMyReferralEarnings,
   });
 
-  const { data: leaderboard } = useQuery({
+  const { data: leaderboard, isLoading: leaderboardLoading } = useQuery({
     queryKey: queryKeys.leaderboard(leaderboardKind),
     queryFn: () => getLeaderboard(leaderboardKind),
   });
@@ -133,6 +133,7 @@ export default function RewardsPage() {
             </button>
           ))}
         </div>
+        {leaderboardLoading && <FootballSpinner />}
         <div className="space-y-2">
           {leaderboard?.map((entry) => (
             <Card key={entry.player_uid}>
@@ -157,12 +158,7 @@ export default function RewardsPage() {
 
       <div>
         <p className="text-sm font-semibold mb-2">Reward history</p>
-        {historyLoading && (
-          <div className="space-y-2">
-            <Skeleton className="h-14" />
-            <Skeleton className="h-14" />
-          </div>
-        )}
+        {historyLoading && <FootballSpinner />}
         <div className="space-y-2">
           {history?.map((r) => (
             <Card key={r.reward_id}>

@@ -8,6 +8,7 @@ import { createVenue, getVenue } from "@/lib/api/venues";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSession } from "@/components/providers/SessionProvider";
 import { Button } from "@/components/ui/Button";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { ApiError } from "@/lib/api/client";
 
 export default function MyVenuesPage() {
@@ -67,6 +68,8 @@ export default function MyVenuesPage() {
         <h1 className="text-xl font-bold">My venues</h1>
         <p className="text-neutral-500 text-sm">Manage venues you own or staff.</p>
       </div>
+
+      {tenantIds.length > 0 && venueQueries.some((q) => q.isLoading) && <FootballSpinner />}
 
       <div className="space-y-3">
         {tenantIds.map((tenantId, i) => {

@@ -11,11 +11,12 @@ import {
   updateNotificationPreferences,
 } from "@/lib/api/notifications";
 import { getInvitePreferences, respondToInvite, updateInvitePreferences } from "@/lib/api/invites";
+import { enablePushNotifications, pushSupported } from "@/lib/notifications/registerPush";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { Switch } from "@/components/ui/Switch";
 import type { InvitePreferences, NotificationPreferences, NotificationResponse } from "@/lib/types";
 
@@ -31,6 +32,13 @@ export default function NotificationsPage() {
   const queryClient = useQueryClient();
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [respondedInviteIds, setRespondedInviteIds] = useState<string[]>([]);
+  const [pushState, setPushState] = useState<"idle" | "enabling" | "enabled" | "denied">("idle");
+
+  async function handleEnablePush() {
+    setPushState("enabling");
+    const ok = await enablePushNotifications();
+    setPushState(ok ? "enabled" : "denied");
+  }
 
   const { data: notifications, isLoading } = useQuery({
     queryKey: queryKeys.notifications(unreadOnly),
@@ -96,12 +104,7 @@ export default function NotificationsPage() {
         </button>
       </div>
 
-      {isLoading && (
-        <div className="space-y-2">
-          <Skeleton className="h-16" />
-          <Skeleton className="h-16" />
-        </div>
-      )}
+      {isLoading && <FootballSpinner />}
       {notifications && notifications.length === 0 && (
         <EmptyState icon={Bell} title="No notifications" description="You're all caught up." />
       )}
@@ -168,6 +171,35 @@ export default function NotificationsPage() {
               <Switch checked={Boolean(preferences[key])} onChange={() => togglePreference(key)} label={label} />
             </div>
           ))}
+        </Card>
+      )}
+
+      {pushSupported && (
+        <Card className="space-y-2">
+          <p className="text-sm font-semibold">Push notifications</p>
+          {pushState === "enabled" ? (
+            <p className="text-sm text-emerald-600">Push notifications are on for this device.</p>
+          ) : (
+            <>
+              <p className="text-sm text-ink-muted">
+                Get notified instantly for invites, match updates, and venue announcements.
+              </p>
+              <Button
+                variant="secondary"
+                pill
+                onClick={handleEnablePush}
+                disabled={pushState === "enabling"}
+                className="text-sm px-5"
+              >
+                {pushState === "enabling" ? "Enabling…" : "Enable push notifications"}
+              </Button>
+              {pushState === "denied" && (
+                <p className="text-xs text-red-600">
+                  Permission was denied — enable notifications for this site in your browser settings.
+                </p>
+              )}
+            </>
+          )}
         </Card>
       )}
 

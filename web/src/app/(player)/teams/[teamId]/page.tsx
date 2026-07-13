@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SkeletonCard } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { ApiError } from "@/lib/api/client";
 import { getSportTheme, sportLabel } from "@/lib/sportTheme";
 
@@ -104,7 +104,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not reject challenge"),
   });
 
-  if (isLoading) return <SkeletonCard />;
+  if (isLoading) return <FootballSpinner />;
   if (!team) return <EmptyState icon={Users2} title="Team not found" />;
 
   const theme = getSportTheme(team.sport);

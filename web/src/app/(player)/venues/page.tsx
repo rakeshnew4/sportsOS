@@ -9,7 +9,7 @@ import { listVenues } from "@/lib/api/venues";
 import { queryKeys } from "@/lib/queryKeys";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SkeletonCard } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { SportFilterChips } from "@/components/ui/SportFilterChips";
 import { getSportFallbackImage, getSportTheme, sportLabel } from "@/lib/sportTheme";
 
@@ -55,13 +55,7 @@ export default function VenuesPage() {
 
       <SportFilterChips value={sport} onChange={setSport} />
 
-      {isLoading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-      )}
+      {isLoading && <FootballSpinner />}
       {venues && venues.length === 0 && (
         <EmptyState icon={MapPin} title="No venues match those filters" description="Try a different sport or city." />
       )}

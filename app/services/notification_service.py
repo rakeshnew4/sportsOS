@@ -47,7 +47,11 @@ def record_notification(
         created_at=now,
     )
     db.add(notif)
-    # Caller commits
+    # Caller commits the notification row. Push is a best-effort side channel —
+    # it doesn't need to wait for that commit, and a later rollback doesn't "unsend" it.
+    if send_push:
+        from app.services import realtime_service
+        realtime_service.send_push(db, player_uid, title, body, data)
     return {
         "notification_id": notification_id,
         "player_uid": player_uid,

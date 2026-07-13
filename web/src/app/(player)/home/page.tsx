@@ -10,7 +10,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { StatTile } from "@/components/ui/StatTile";
-import { Skeleton, SkeletonCard } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { getSportTheme, sportLabel } from "@/lib/sportTheme";
 
 const QUICK_ACTIONS = [
@@ -63,7 +63,7 @@ export default function HomePage() {
       </div>
 
       {statsLoading ? (
-        <SkeletonCard />
+        <FootballSpinner />
       ) : (
         stats && (
           <Card>
@@ -92,12 +92,7 @@ export default function HomePage() {
             </Link>
           )}
         </div>
-        {bookingsLoading && (
-          <div className="space-y-2">
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
-          </div>
-        )}
+        {bookingsLoading && <FootballSpinner />}
         {upcoming && upcoming.length === 0 && (
           <Card className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">

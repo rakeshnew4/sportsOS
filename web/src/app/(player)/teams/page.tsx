@@ -9,7 +9,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SkeletonCard } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { SportFilterChips } from "@/components/ui/SportFilterChips";
 import { ApiError } from "@/lib/api/client";
 import { getSportTheme, sportLabel } from "@/lib/sportTheme";
@@ -103,11 +103,7 @@ export default function TeamsPage() {
 
       <div>
         <p className="text-sm font-semibold mb-2">My teams</p>
-        {myTeamsLoading && (
-          <div className="space-y-3">
-            <SkeletonCard />
-          </div>
-        )}
+        {myTeamsLoading && <FootballSpinner />}
         {myTeams && myTeams.length === 0 && (
           <EmptyState icon={Users2} title="You're not on a team yet" description="Create one or browse teams below." />
         )}
@@ -140,12 +136,7 @@ export default function TeamsPage() {
       <div>
         <p className="text-sm font-semibold mb-2">Browse teams</p>
         <SportFilterChips value={sportFilter} onChange={setSportFilter} />
-        {isLoading && (
-          <div className="space-y-3 mt-3">
-            <SkeletonCard />
-            <SkeletonCard />
-          </div>
-        )}
+        {isLoading && <FootballSpinner />}
         {allTeams && allTeams.length === 0 && (
           <div className="mt-3">
             <EmptyState icon={Users2} title="No teams found" description="Try a different sport." />

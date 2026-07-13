@@ -26,8 +26,12 @@ services:
       - DATA_BACKEND=postgresql
       - DATABASE_URL=postgresql://sportsdb:sportsdb_pass@postgres:5432/sportsdb
       - CORS_ALLOW_ORIGINS=http://localhost:3000
+      - FIRESTORE_PROJECT_ID=${FIRESTORE_PROJECT_ID:-}
+    # ./firebase_serviceaccount.json is a gitignored secret — realtime mirroring/push
+    # (app/core/firebase.py) silently disable themselves if it's not present.
     volumes:
       - ./app:/app/app
+      - ./firebase_serviceaccount.json:/app/firebase_serviceaccount.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,6 +40,14 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:-}
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+        NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+        NEXT_PUBLIC_FIREBASE_VAPID_KEY: ${NEXT_PUBLIC_FIREBASE_VAPID_KEY:-}
     restart: unless-stopped
     ports:
       - "3000:3000"

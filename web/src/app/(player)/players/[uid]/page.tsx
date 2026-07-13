@@ -10,7 +10,7 @@ import { useSession } from "@/components/providers/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SkeletonCard } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { StatTile } from "@/components/ui/StatTile";
 import { ApiError } from "@/lib/api/client";
 import { ALL_SPORTS, getSportTheme, sportLabel } from "@/lib/sportTheme";
@@ -33,7 +33,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ uid: s
     queryFn: () => listPlayerReviews(uid),
   });
 
-  if (isLoading) return <SkeletonCard />;
+  if (isLoading) return <FootballSpinner />;
   if (!profile) return <EmptyState icon={Trophy} title="Player not found" />;
 
   return (

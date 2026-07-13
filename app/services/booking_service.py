@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from app.db.orm import Booking, BookingParticipant, User
@@ -17,6 +17,15 @@ from app.models.booking import (
 from app.services.court_service import get_court
 
 ACTIVE_STATUSES = ("pending_payment", "confirmed")
+
+
+def _lock_court_date(db: Session, tenant_id: str, court_id: str, date: str) -> None:
+    """Serializes concurrent booking attempts for the same court+date via a Postgres
+    advisory lock, held for the rest of the current transaction. slot_overlaps_existing
+    is a check-then-insert with no row to lock (the conflicting row doesn't exist yet),
+    so a plain row lock can't prevent two concurrent requests from both seeing "no
+    overlap" and both committing — this closes that gap without a schema change."""
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": f"{tenant_id}:{court_id}:{date}"})
 
 
 def to_minutes(hhmm: str) -> int:
@@ -155,6 +164,7 @@ def create_booking(db: Session, tenant_id: str, uid: str, req: BookingCreateRequ
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Requested time is outside court operating hours"
         )
+    _lock_court_date(db, tenant_id, req.court_id, req.date)
     if slot_overlaps_existing(db, tenant_id, req.court_id, req.date, req.start_time, req.end_time):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot overlaps an existing booking")
 
@@ -202,6 +212,10 @@ def create_booking(db: Session, tenant_id: str, uid: str, req: BookingCreateRequ
     db.add(booking)
     db.commit()
     db.refresh(booking)
+
+    from app.services import realtime_service
+    realtime_service.mirror_slot_availability(db, tenant_id, req.court_id, req.date)
+
     return booking_to_response(booking)
 
 
@@ -248,6 +262,11 @@ def cancel_booking(db: Session, tenant_id: str, booking_id: str, uid: str, is_st
     booking.status = "cancelled"
     db.commit()
 
+    from app.services import realtime_service
+    realtime_service.mirror_slot_availability(db, tenant_id, booking.court_id, booking.date)
+    if booking.is_joinable:
+        realtime_service.mirror_match_state(db, tenant_id, booking_id)
+
     try:
         from app.services import waitlist_service
         waitlist_service.promote_from_waitlist(db, tenant_id, booking_id)
@@ -290,6 +309,7 @@ def reschedule_booking(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Requested time is outside court operating hours"
         )
+    _lock_court_date(db, tenant_id, court_id, req.date)
     if slot_overlaps_existing(
         db, tenant_id, court_id, req.date, req.start_time, req.end_time, exclude_booking_id=booking_id
     ):
@@ -297,6 +317,7 @@ def reschedule_booking(
 
     price = round(court.hourly_price * ((end_min - start_min) / 60), 2)
 
+    old_court_id, old_date = booking.court_id, booking.date
     booking.court_id = court_id
     booking.sport = court.sport
     booking.date = req.date
@@ -305,6 +326,13 @@ def reschedule_booking(
     booking.price = price
     db.commit()
     db.refresh(booking)
+
+    from app.services import realtime_service
+    realtime_service.mirror_slot_availability(db, tenant_id, court_id, req.date)
+    if old_court_id != court_id or old_date != req.date:
+        realtime_service.mirror_slot_availability(db, tenant_id, old_court_id, old_date)
+    if booking.is_joinable:
+        realtime_service.mirror_match_state(db, tenant_id, booking_id)
 
     try:
         from app.services import notification_service

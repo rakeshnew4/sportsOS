@@ -5,9 +5,14 @@ from pydantic import BaseModel
 
 from app.core.db import Session, get_db
 from app.core.security import CurrentUser, get_current_user
-from app.services import notification_service
+from app.services import notification_service, realtime_service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+
+class DeviceTokenRequest(BaseModel):
+    platform: str  # "web" | "android"
+    token: str
 
 
 class NotificationResponse(BaseModel):
@@ -87,3 +92,25 @@ def update_notification_preferences(
     """Update user's notification preferences."""
     prefs_dict = req.dict(exclude_none=True)
     return notification_service.update_notification_preferences(db, user.uid, prefs_dict)
+
+
+@router.post("/me/device-tokens")
+def register_device_token(
+    req: DeviceTokenRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Register (or refresh) a push-notification device token for the current user."""
+    realtime_service.register_device_token(db, user.uid, req.platform, req.token)
+    return {"success": True}
+
+
+@router.delete("/me/device-tokens/{token}")
+def unregister_device_token(
+    token: str,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Unregister a push-notification device token (e.g. on logout)."""
+    realtime_service.unregister_device_token(db, user.uid, token)
+    return {"success": True}

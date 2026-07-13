@@ -8,7 +8,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { ApiError } from "@/lib/api/client";
 
 export default function WalletPage() {
@@ -83,12 +83,7 @@ export default function WalletPage() {
 
       <div>
         <p className="text-sm font-semibold mb-2">Transactions</p>
-        {isLoading && (
-          <div className="space-y-3">
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
-          </div>
-        )}
+        {isLoading && <FootballSpinner />}
         {sorted && sorted.length === 0 && (
           <EmptyState icon={Receipt} title="No transactions yet" description="Top up your wallet to get started." />
         )}

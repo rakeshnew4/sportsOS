@@ -18,7 +18,7 @@ import { useSession } from "@/components/providers/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SkeletonCard } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { SportFilterChips } from "@/components/ui/SportFilterChips";
 import { ApiError } from "@/lib/api/client";
 import { getSportTheme, sportLabel } from "@/lib/sportTheme";
@@ -99,13 +99,7 @@ function OpenMatches() {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {isLoading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-      )}
+      {isLoading && <FootballSpinner />}
       {matches && matches.length === 0 && (
         <EmptyState icon={Zap} title="No open matches right now" description="Check back later or start your own." />
       )}
@@ -308,7 +302,7 @@ function FindPlayers() {
       {tenantId && courtId && (
         <div>
           <p className="text-sm font-semibold mb-2">Queue for this court/date</p>
-          {isLoading && <SkeletonCard />}
+          {isLoading && <FootballSpinner />}
           {requests && requests.length === 0 && (
             <EmptyState icon={Users2} title="No one queued yet" description="Be the first to start the queue." />
           )}

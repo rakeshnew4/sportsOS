@@ -9,7 +9,7 @@ import { getVenueRatingsStats } from "@/lib/api/ratings";
 import { queryKeys } from "@/lib/queryKeys";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Skeleton, SkeletonCard } from "@/components/ui/Skeleton";
+import { FootballSpinner } from "@/components/ui/FootballSpinner";
 import { SportFilterChips } from "@/components/ui/SportFilterChips";
 import { getSportFallbackImage, getSportTheme, sportLabel } from "@/lib/sportTheme";
 
@@ -59,7 +59,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ tenantId
           </div>
         </div>
       ) : (
-        <Skeleton className="h-28 rounded-3xl" />
+        <FootballSpinner />
       )}
 
       {venue?.description && <p className="text-sm text-ink-muted">{venue.description}</p>}
@@ -76,12 +76,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ tenantId
 
       {venue && <SportFilterChips value={sportFilter} onChange={setSportFilter} sports={venue.sports} />}
 
-      {isLoading && (
-        <div className="space-y-3">
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-      )}
+      {isLoading && <FootballSpinner />}
 
       <div className="space-y-3">
         {visibleCourts?.map((court) => {

@@ -10,6 +10,7 @@ from app.models.venue import GeoPoint
 from app.services.booking_service import booking_to_response, get_booking
 from app.services.venue_service import get_venue
 from app.services.wallet_service import debit_wallet, credit_wallet
+from app.services import realtime_service
 import uuid
 
 
@@ -33,6 +34,7 @@ def open_to_community(
     booking.geo_lng = venue.geo.lng
     db.commit()
     db.refresh(booking)
+    realtime_service.mirror_match_state(db, tenant_id, booking_id)
     return booking_to_response(booking)
 
 
@@ -69,10 +71,6 @@ def join_match(db: Session, tenant_id: str, booking_id: str, uid: str) -> Bookin
 
     if captain_uid == uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You already own this booking")
-    if not booking.is_joinable or booking.status != "confirmed":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This match is not open to join")
-    if booking.slots_open <= 0:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No open slots left")
 
     existing = (
         db.query(BookingParticipant)
@@ -81,6 +79,22 @@ def join_match(db: Session, tenant_id: str, booking_id: str, uid: str) -> Bookin
     )
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already joined this match")
+
+    # Lock the booking row so two concurrent joiners can't both pass the
+    # slots_open check before either commits (was previously unguarded — see
+    # wallet_service._apply_ledger_entry for the same with_for_update pattern).
+    booking = (
+        db.query(Booking)
+        .filter(Booking.booking_id == booking_id, Booking.tenant_id == tenant_id)
+        .with_for_update()
+        .first()
+    )
+    if not booking:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
+    if not booking.is_joinable or booking.status != "confirmed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This match is not open to join")
+    if booking.slots_open <= 0:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No open slots left")
 
     slots_total = booking.slots_total or 1
     price_per_slot = round(booking.price / slots_total, 2)
@@ -106,6 +120,7 @@ def join_match(db: Session, tenant_id: str, booking_id: str, uid: str) -> Bookin
 
     db.commit()
     db.refresh(booking)
+    realtime_service.mirror_match_state(db, tenant_id, booking_id)
     return booking_to_response(booking)
 
 
