@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.db import Session, get_db
@@ -49,6 +49,13 @@ def create_venue(
     user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> VenueResponse:
+    # Only admin accounts (provisioned by a superadmin, see admin_accounts.py) can
+    # create venues — player accounts never get this option, self-serve or otherwise.
+    if user.is_player:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Player accounts can't create venues — contact us to get set up as a venue owner",
+        )
     return venue_service.create_venue(db, user.uid, req)
 
 

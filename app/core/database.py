@@ -1,6 +1,6 @@
 """SQLAlchemy engine, session factory, and declarative Base."""
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.core.config import get_settings
@@ -31,6 +31,20 @@ def create_all_tables():
     # Import ORM models so their metadata is registered with Base before create_all.
     import app.db.orm  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    _run_additive_migrations()
+
+
+def _run_additive_migrations():
+    """create_all only adds missing tables, never columns to existing ones.
+    There's no migration framework here, so hand-roll the few additive,
+    idempotent ALTERs needed to evolve tables already deployed."""
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_superadmin BOOLEAN NOT NULL DEFAULT false"))
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users (email) WHERE email IS NOT NULL"
+        ))
 
 
 def get_db():

@@ -39,4 +39,5 @@ export const queryKeys = {
   playerRatingsStats: (uid: string) => ["playerRatingsStats", uid] as const,
   playerReviews: (uid: string) => ["playerReviews", uid] as const,
   venueRatingsStats: (tenantId: string) => ["venueRatingsStats", tenantId] as const,
+  adminAccounts: () => ["adminAccounts"] as const,
 };

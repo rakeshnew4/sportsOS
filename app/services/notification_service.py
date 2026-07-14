@@ -22,6 +22,7 @@ NotificationType = Literal[
     "match_invite",
     "booking_rescheduled",
     "venue_announcement",
+    "platform_announcement",
 ]
 
 

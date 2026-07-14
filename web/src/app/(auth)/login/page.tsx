@@ -60,6 +60,12 @@ export default function LoginPage() {
           Create an account
         </Link>
       </p>
+      <p className="text-xs text-ink-muted text-center mt-3">
+        Run a venue?{" "}
+        <Link href="/admin-login" className="text-brand-from font-medium">
+          Admin log in
+        </Link>
+      </p>
     </Card>
   );
 }

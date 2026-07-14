@@ -94,13 +94,16 @@ export default function MyVenuesPage() {
         )}
       </div>
 
-      {!showCreate && (
+      {/* Venue creation is an admin account capability only — player accounts
+          (even ones staffing a venue) never see this, and the backend rejects
+          the request either way (see POST /venues in app/routers/venues.py). */}
+      {!session.is_player && !showCreate && (
         <Button variant="secondary" onClick={() => setShowCreate(true)} className="w-full">
           + Create a venue
         </Button>
       )}
 
-      {showCreate && (
+      {!session.is_player && showCreate && (
         <form
           onSubmit={(e) => {
             e.preventDefault();

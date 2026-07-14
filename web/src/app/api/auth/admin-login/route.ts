@@ -5,12 +5,12 @@ import { isSecureRequest, SESSION_COOKIE } from "@/lib/session";
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
-  const { display_name, phone } = await req.json();
+  const { email, password } = await req.json();
 
-  const res = await fetch(`${API_BASE_URL}/auth/register/player`, {
+  const res = await fetch(`${API_BASE_URL}/auth/admin/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ display_name, phone }),
+    body: JSON.stringify({ email, password }),
   });
 
   const data = await res.json();

@@ -14,6 +14,7 @@ bearer_scheme = HTTPBearer()
 class CurrentUser:
     uid: str
     is_player: bool = False
+    is_superadmin: bool = False
     owner_of: list[str] = field(default_factory=list)
     staff_of: list[str] = field(default_factory=list)
 
@@ -43,6 +44,7 @@ def get_current_user(
     return CurrentUser(
         uid=uid,
         is_player=bool(user.is_player) if user else False,
+        is_superadmin=bool(user.is_superadmin) if user else False,
         owner_of=[r.tenant_id for r in roles if r.role_type == "owner"],
         staff_of=[r.tenant_id for r in roles if r.role_type == "staff"],
     )
@@ -54,4 +56,10 @@ def require_venue_access(tenant_id: str, user: CurrentUser = Depends(get_current
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have owner/staff access to this venue",
         )
+    return user
+
+
+def require_superadmin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if not user.is_superadmin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin access required")
     return user

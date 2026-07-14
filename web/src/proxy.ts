@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/", "/login", "/signup"];
-const AUTH_ONLY_PATHS = ["/login", "/signup"];
+const PUBLIC_PATHS = ["/", "/login", "/signup", "/admin-login"];
+const AUTH_ONLY_PATHS = ["/login", "/signup", "/admin-login"];
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -9,7 +9,11 @@ export function proxy(req: NextRequest) {
   const isPublic = PUBLIC_PATHS.includes(pathname);
 
   if (!uid && !isPublic) {
-    return NextResponse.redirect(new URL("/login", req.url));
+    // /admin/* has its own login surface (email+password, provisioned by a
+    // superadmin) — send unauthenticated visits there instead of the player
+    // phone login.
+    const loginPath = pathname.startsWith("/admin") ? "/admin-login" : "/login";
+    return NextResponse.redirect(new URL(loginPath, req.url));
   }
   if (uid && (AUTH_ONLY_PATHS.includes(pathname) || pathname === "/")) {
     return NextResponse.redirect(new URL("/home", req.url));

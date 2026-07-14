@@ -42,6 +42,12 @@ class User(Base):
     skill_levels = Column(JSONB, nullable=False, default=dict)   # {sport: "beginner"|"intermediate"|"advanced"|"pro"}
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
+    # Admin auth (venue owners / superadmins only — players never get these set).
+    # Provisioned out-of-band by a superadmin; there is no public self-signup for them.
+    email = Column(String, unique=True, nullable=True, index=True)
+    password_hash = Column(String, nullable=True)
+    is_superadmin = Column(Boolean, nullable=False, default=False)
+
     roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
     wallet = relationship("Wallet", back_populates="user", uselist=False, cascade="all, delete-orphan")
     wallet_transactions = relationship("WalletTransaction", back_populates="user", cascade="all, delete-orphan")

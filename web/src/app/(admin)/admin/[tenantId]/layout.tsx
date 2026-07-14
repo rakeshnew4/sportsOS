@@ -11,7 +11,7 @@ export default async function TenantAdminLayout({
 }) {
   const { tenantId } = await params;
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect("/admin-login");
   if (!session.owner_of.includes(tenantId) && !session.staff_of.includes(tenantId)) {
     redirect("/admin");
   }

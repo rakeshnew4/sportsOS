@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.database import create_all_tables
-from app.routers import analytics, auth, bookings, courts, invites, kpis, matches, matchmaking, notifications, players, ratings, realtime, teams, rewards, venues, wallet, venue_staff, waitlist
+from app.routers import admin_accounts, admin_broadcast, analytics, auth, bookings, courts, invites, kpis, matches, matchmaking, notifications, players, ratings, realtime, teams, rewards, venues, wallet, venue_staff, waitlist
 
 
 @asynccontextmanager
@@ -25,6 +25,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(admin_accounts.router)
+app.include_router(admin_broadcast.router)
 app.include_router(venues.router)
 app.include_router(venue_staff.router)
 app.include_router(courts.router)

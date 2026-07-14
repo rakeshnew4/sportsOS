@@ -1,9 +1,27 @@
 export interface MeResponse {
   uid: string;
   display_name: string | null;
+  email: string | null;
   is_player: boolean;
+  is_superadmin: boolean;
   owner_of: string[];
   staff_of: string[];
+}
+
+export interface AdminAccountResponse {
+  uid: string;
+  email: string | null;
+  display_name: string | null;
+  is_superadmin: boolean;
+  owner_of: string[];
+  staff_of: string[];
+  created_at: string;
+}
+
+export interface AdminPasswordResetResponse {
+  uid: string;
+  email: string | null;
+  new_password: string;
 }
 
 export interface GeoPoint {

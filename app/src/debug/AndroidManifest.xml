@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only manifest override, merged only into debug builds. Allows plain-HTTP traffic
+     to 10.0.2.2 (the emulator's alias for the host running docker-compose) since there's no
+     TLS in front of the dev stack. Release builds get no such override and stay HTTPS-only. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true" />
+</manifest>
